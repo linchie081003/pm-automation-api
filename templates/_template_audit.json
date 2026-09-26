@@ -1,0 +1,1097 @@
+{
+  "SCurve": [
+    {
+      "r": 2,
+      "cells": {
+        "B": "Project Name",
+        "C": "Auto Bandwidth on Demand"
+      }
+    },
+    {
+      "r": 3,
+      "cells": {
+        "B": "Client",
+        "C": " PT Aplikanusa Lintasarta"
+      }
+    },
+    {
+      "r": 4,
+      "cells": {
+        "B": "Project Manager",
+        "C": " Lesy Nugraheny"
+      }
+    },
+    {
+      "r": 5,
+      "cells": {
+        "B": "Project Due Date",
+        "C": "2026-08-28 00:00:00"
+      }
+    },
+    {
+      "r": 6,
+      "cells": {
+        "B": "PO Due Date",
+        "C": "2026-08-31 00:00:00"
+      }
+    },
+    {
+      "r": 7,
+      "cells": {
+        "B": "W1 Project Date",
+        "C": "2026-05-14 00:00:00"
+      }
+    },
+    {
+      "r": 8,
+      "cells": {
+        "B": "Project Status Date",
+        "C": "2026-05-14 00:00:00"
+      }
+    },
+    {
+      "r": 10,
+      "cells": {
+        "B": "Target Linear",
+        "C": "Progress",
+        "D": "Deviation"
+      }
+    },
+    {
+      "r": 11,
+      "cells": {
+        "B": "=J62",
+        "C": "=L62",
+        "D": "=C11-B11"
+      }
+    },
+    {
+      "r": 16,
+      "cells": {
+        "P": "2026-05-07 00:00:00",
+        "Q": "=P17+1",
+        "R": "=Q17+1",
+        "S": "=R17+1"
+      }
+    },
+    {
+      "r": 17,
+      "cells": {
+        "P": "2026-05-14 00:00:00",
+        "Q": "=P17+7",
+        "R": "=Q17+7",
+        "S": "=R17+7"
+      }
+    },
+    {
+      "r": 18,
+      "cells": {
+        "A": "No",
+        "B": "Task",
+        "C": "Bobot",
+        "D": "Start Date",
+        "E": "Finish Date",
+        "F": "Bobot",
+        "G": "\u03a3 Minggu",
+        "H": "Duration",
+        "I": "Linear Target",
+        "K": "Actual Progress",
+        "M": "Deviation",
+        "N": "Bobot",
+        "O": "\u03a3 Minggu",
+        "P": "Week-01",
+        "Q": "Week-02",
+        "R": "Week-03",
+        "S": "Week-04"
+      }
+    },
+    {
+      "r": 19,
+      "cells": {
+        "I": "Weight (%)",
+        "J": "%",
+        "K": "Progress",
+        "L": "%",
+        "M": "%"
+      }
+    },
+    {
+      "r": 20,
+      "cells": {
+        "A": "I",
+        "B": "INITIATION & PLANNING",
+        "C": "=SUM(C21:C21)",
+        "D": "=MIN(D21:D21)",
+        "E": "=MAX(E21:E21)",
+        "H": "=NETWORKDAYS(D20,E20,Hari_Libur)",
+        "I": "=IF(C20=0,0,J20/C20)",
+        "J": "=SUM(J21:J21)",
+        "K": "=IF(C20=0,0,L20/C20)",
+        "L": "=SUM(L21:L21)",
+        "M": "=SUM(M21:M21)"
+      }
+    },
+    {
+      "r": 21,
+      "cells": {
+        "B": "Kick Off Meeting",
+        "C": "0.01",
+        "D": "2026-05-07 00:00:00",
+        "E": "2026-05-07 00:00:00",
+        "F": "=C21",
+        "G": "=SUM(P21:AZ21)",
+        "H": "=NETWORKDAYS(D21,E21,Hari_Libur)",
+        "I": "=IF($C$8>=E21,1,IF($C$8<D21,0,IF(NETWORKDAYS(D21,E21,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I21*F21",
+        "K": "1",
+        "L": "=C21*K21",
+        "M": "=L21-J21",
+        "N": "=C21",
+        "O": "=SUM(P21:BK21)",
+        "P": "=IF(AND($D21<=P$17,$E21>=P$16),$C21*NETWORKDAYS(MAX($D21,P$16),MIN($E21,P$17),Ha",
+        "Q": "=IF(AND($D21<=Q$17,$E21>=Q$16),$C21*NETWORKDAYS(MAX($D21,Q$16),MIN($E21,Q$17),Ha",
+        "R": "=IF(AND($D21<=R$17,$E21>=R$16),$C21*NETWORKDAYS(MAX($D21,R$16),MIN($E21,R$17),Ha",
+        "S": "=IF(AND($D21<=S$17,$E21>=S$16),$C21*NETWORKDAYS(MAX($D21,S$16),MIN($E21,S$17),Ha"
+      }
+    },
+    {
+      "r": 22,
+      "cells": {
+        "P": "=IF(AND($D22<=P$17,$E22>=P$16),$C22*NETWORKDAYS(MAX($D22,P$16),MIN($E22,P$17),Li",
+        "Q": "=IF(AND($D22<=Q$17,$E22>=Q$16),$C22*NETWORKDAYS(MAX($D22,Q$16),MIN($E22,Q$17),Li",
+        "R": "=IF(AND($D22<=R$17,$E22>=R$16),$C22*NETWORKDAYS(MAX($D22,R$16),MIN($E22,R$17),Li",
+        "S": "=IF(AND($D22<=S$17,$E22>=S$16),$C22*NETWORKDAYS(MAX($D22,S$16),MIN($E22,S$17),Li"
+      }
+    },
+    {
+      "r": 23,
+      "cells": {
+        "P": "=IF(AND($D23<=P$17,$E23>=P$16),$C23*NETWORKDAYS(MAX($D23,P$16),MIN($E23,P$17),Li",
+        "Q": "=IF(AND($D23<=Q$17,$E23>=Q$16),$C23*NETWORKDAYS(MAX($D23,Q$16),MIN($E23,Q$17),Li",
+        "R": "=IF(AND($D23<=R$17,$E23>=R$16),$C23*NETWORKDAYS(MAX($D23,R$16),MIN($E23,R$17),Li",
+        "S": "=IF(AND($D23<=S$17,$E23>=S$16),$C23*NETWORKDAYS(MAX($D23,S$16),MIN($E23,S$17),Li"
+      }
+    },
+    {
+      "r": 24,
+      "cells": {
+        "A": "II",
+        "B": "PREPARATION",
+        "C": "=SUM(C25:C26)",
+        "D": "=MIN(D25:D26)",
+        "E": "=MAX(E25:E26)",
+        "H": "=NETWORKDAYS(D24,E24,Hari_Libur)",
+        "I": "=IF(C24=0,0,J24/C24)",
+        "J": "=SUM(J25:J26)",
+        "K": "=IF(C24=0,0,L24/C24)",
+        "L": "=SUM(L25:L26)",
+        "M": "=SUM(M25:M26)"
+      }
+    },
+    {
+      "r": 25,
+      "cells": {
+        "B": "Sync Repo with the Staging Repo",
+        "C": "0.02",
+        "D": "2026-05-09 00:00:00",
+        "E": "2026-05-13 00:00:00",
+        "F": "=C25",
+        "G": "=SUM(P25:AZ25)",
+        "H": "=NETWORKDAYS(D25,E25,Hari_Libur)",
+        "I": "=IF($C$8>=E25,1,IF($C$8<D25,0,IF(NETWORKDAYS(D25,E25,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I25*F25",
+        "K": "1",
+        "L": "=C25*K25",
+        "M": "=L25-J25",
+        "N": "=C25",
+        "O": "=SUM(P25:BK25)",
+        "P": "=IF(AND($D25<=P$17,$E25>=P$16),$C25*NETWORKDAYS(MAX($D25,P$16),MIN($E25,P$17),Ha",
+        "Q": "=IF(AND($D25<=Q$17,$E25>=Q$16),$C25*NETWORKDAYS(MAX($D25,Q$16),MIN($E25,Q$17),Ha",
+        "R": "=IF(AND($D25<=R$17,$E25>=R$16),$C25*NETWORKDAYS(MAX($D25,R$16),MIN($E25,R$17),Ha",
+        "S": "=IF(AND($D25<=S$17,$E25>=S$16),$C25*NETWORKDAYS(MAX($D25,S$16),MIN($E25,S$17),Ha"
+      }
+    },
+    {
+      "r": 26,
+      "cells": {
+        "B": "Environment Setup for BOWD",
+        "C": "0.02",
+        "D": "2026-05-18 00:00:00",
+        "E": "2026-05-19 00:00:00",
+        "F": "=C26",
+        "G": "=SUM(P26:AZ26)",
+        "H": "=NETWORKDAYS(D26,E26,Hari_Libur)",
+        "I": "=IF($C$8>=E26,1,IF($C$8<D26,0,IF(NETWORKDAYS(D26,E26,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I26*F26",
+        "K": "0",
+        "L": "=C26*K26",
+        "M": "=L26-J26",
+        "N": "=C26",
+        "O": "=SUM(P26:BK26)",
+        "P": "=IF(AND($D26<=P$17,$E26>=P$16),$C26*NETWORKDAYS(MAX($D26,P$16),MIN($E26,P$17),Ha",
+        "Q": "=IF(AND($D26<=Q$17,$E26>=Q$16),$C26*NETWORKDAYS(MAX($D26,Q$16),MIN($E26,Q$17),Ha",
+        "R": "=IF(AND($D26<=R$17,$E26>=R$16),$C26*NETWORKDAYS(MAX($D26,R$16),MIN($E26,R$17),Ha",
+        "S": "=IF(AND($D26<=S$17,$E26>=S$16),$C26*NETWORKDAYS(MAX($D26,S$16),MIN($E26,S$17),Ha"
+      }
+    },
+    {
+      "r": 27,
+      "cells": {
+        "P": "=IF(AND($D27<=P$17,$E27>=P$16),$C27*NETWORKDAYS(MAX($D27,P$16),MIN($E27,P$17),Li",
+        "Q": "=IF(AND($D27<=Q$17,$E27>=Q$16),$C27*NETWORKDAYS(MAX($D27,Q$16),MIN($E27,Q$17),Li",
+        "R": "=IF(AND($D27<=R$17,$E27>=R$16),$C27*NETWORKDAYS(MAX($D27,R$16),MIN($E27,R$17),Li",
+        "S": "=IF(AND($D27<=S$17,$E27>=S$16),$C27*NETWORKDAYS(MAX($D27,S$16),MIN($E27,S$17),Li"
+      }
+    },
+    {
+      "r": 28,
+      "cells": {
+        "A": "III",
+        "B": "REQUIREMENT",
+        "C": "=SUM(C29:C30)",
+        "D": "=MIN(D29:D30)",
+        "E": "=MAX(E29:E30)",
+        "H": "=NETWORKDAYS(D28,E28,Hari_Libur)",
+        "I": "=IF(C28=0,0,J28/C28)",
+        "J": "=SUM(J29:J30)",
+        "K": "=IF(C28=0,0,L28/C28)",
+        "L": "=SUM(L29:L30)",
+        "M": "=SUM(M29:M30)"
+      }
+    },
+    {
+      "r": 29,
+      "cells": {
+        "B": "Requirement",
+        "C": "0.05",
+        "D": "2026-05-11 00:00:00",
+        "E": "2026-05-21 00:00:00",
+        "F": "=C29",
+        "G": "=SUM(P29:AZ29)",
+        "H": "=NETWORKDAYS(D29,E29,Hari_Libur)",
+        "I": "=IF($C$8>=E29,1,IF($C$8<D29,0,IF(NETWORKDAYS(D29,E29,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I29*F29",
+        "K": "0.5",
+        "L": "=C29*K29",
+        "M": "=L29-J29",
+        "N": "=C29",
+        "O": "=SUM(P29:BK29)",
+        "P": "=IF(AND($D29<=P$17,$E29>=P$16),$C29*NETWORKDAYS(MAX($D29,P$16),MIN($E29,P$17),Ha",
+        "Q": "=IF(AND($D29<=Q$17,$E29>=Q$16),$C29*NETWORKDAYS(MAX($D29,Q$16),MIN($E29,Q$17),Ha",
+        "R": "=IF(AND($D29<=R$17,$E29>=R$16),$C29*NETWORKDAYS(MAX($D29,R$16),MIN($E29,R$17),Ha",
+        "S": "=IF(AND($D29<=S$17,$E29>=S$16),$C29*NETWORKDAYS(MAX($D29,S$16),MIN($E29,S$17),Ha"
+      }
+    },
+    {
+      "r": 30,
+      "cells": {
+        "B": "Requirement Finalize",
+        "C": "0.05",
+        "D": "2026-05-22 00:00:00",
+        "E": "2026-05-26 00:00:00",
+        "F": "=C30",
+        "G": "=SUM(P30:AZ30)",
+        "H": "=NETWORKDAYS(D30,E30,Hari_Libur)",
+        "I": "=IF($C$8>=E30,1,IF($C$8<D30,0,IF(NETWORKDAYS(D30,E30,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I30*F30",
+        "K": "0",
+        "L": "=C30*K30",
+        "M": "=L30-J30",
+        "N": "=C30",
+        "O": "=SUM(P30:BK30)",
+        "P": "=IF(AND($D30<=P$17,$E30>=P$16),$C30*NETWORKDAYS(MAX($D30,P$16),MIN($E30,P$17),Ha",
+        "Q": "=IF(AND($D30<=Q$17,$E30>=Q$16),$C30*NETWORKDAYS(MAX($D30,Q$16),MIN($E30,Q$17),Ha",
+        "R": "=IF(AND($D30<=R$17,$E30>=R$16),$C30*NETWORKDAYS(MAX($D30,R$16),MIN($E30,R$17),Ha",
+        "S": "=IF(AND($D30<=S$17,$E30>=S$16),$C30*NETWORKDAYS(MAX($D30,S$16),MIN($E30,S$17),Ha"
+      }
+    },
+    {
+      "r": 31,
+      "cells": {
+        "P": "=IF(AND($D31<=P$17,$E31>=P$16),$C31*NETWORKDAYS(MAX($D31,P$16),MIN($E31,P$17),Li",
+        "Q": "=IF(AND($D31<=Q$17,$E31>=Q$16),$C31*NETWORKDAYS(MAX($D31,Q$16),MIN($E31,Q$17),Li",
+        "R": "=IF(AND($D31<=R$17,$E31>=R$16),$C31*NETWORKDAYS(MAX($D31,R$16),MIN($E31,R$17),Li",
+        "S": "=IF(AND($D31<=S$17,$E31>=S$16),$C31*NETWORKDAYS(MAX($D31,S$16),MIN($E31,S$17),Li"
+      }
+    },
+    {
+      "r": 32,
+      "cells": {
+        "A": "IV",
+        "B": "ANALYSIS & DESIGN",
+        "C": "=SUM(C33:C36)",
+        "D": "=MIN(D33:D36)",
+        "E": "=MAX(E33:E36)",
+        "H": "=NETWORKDAYS(D32,E32,Hari_Libur)",
+        "I": "=IF(C32=0,0,J32/C32)",
+        "J": "=SUM(J33:J36)",
+        "K": "=IF(C32=0,0,L32/C32)",
+        "L": "=SUM(L33:L36)",
+        "M": "=SUM(M33:M36)"
+      }
+    },
+    {
+      "r": 33,
+      "cells": {
+        "B": "Analisa",
+        "C": "0.07",
+        "D": "2026-05-29 00:00:00",
+        "E": "2026-06-04 00:00:00",
+        "F": "=C33",
+        "G": "=SUM(P33:AZ33)",
+        "H": "=NETWORKDAYS(D33,E33,Hari_Libur)",
+        "I": "=IF($C$8>=E33,1,IF($C$8<D33,0,IF(NETWORKDAYS(D33,E33,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I33*F33",
+        "K": "0",
+        "L": "=C33*K33",
+        "M": "=L33-J33",
+        "N": "=C33",
+        "O": "=SUM(P33:BK33)",
+        "P": "=IF(AND($D33<=P$17,$E33>=P$16),$C33*NETWORKDAYS(MAX($D33,P$16),MIN($E33,P$17),Ha",
+        "Q": "=IF(AND($D33<=Q$17,$E33>=Q$16),$C33*NETWORKDAYS(MAX($D33,Q$16),MIN($E33,Q$17),Ha",
+        "R": "=IF(AND($D33<=R$17,$E33>=R$16),$C33*NETWORKDAYS(MAX($D33,R$16),MIN($E33,R$17),Ha",
+        "S": "=IF(AND($D33<=S$17,$E33>=S$16),$C33*NETWORKDAYS(MAX($D33,S$16),MIN($E33,S$17),Ha"
+      }
+    },
+    {
+      "r": 34,
+      "cells": {
+        "B": "Technical Design",
+        "C": "0.05",
+        "D": "2026-06-05 00:00:00",
+        "E": "2026-06-09 00:00:00",
+        "F": "=C34",
+        "G": "=SUM(P34:AZ34)",
+        "H": "=NETWORKDAYS(D34,E34,Hari_Libur)",
+        "I": "=IF($C$8>=E34,1,IF($C$8<D34,0,IF(NETWORKDAYS(D34,E34,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I34*F34",
+        "K": "0",
+        "L": "=C34*K34",
+        "M": "=L34-J34",
+        "N": "=C34",
+        "O": "=SUM(P34:BK34)",
+        "P": "=IF(AND($D34<=P$17,$E34>=P$16),$C34*NETWORKDAYS(MAX($D34,P$16),MIN($E34,P$17),Ha",
+        "Q": "=IF(AND($D34<=Q$17,$E34>=Q$16),$C34*NETWORKDAYS(MAX($D34,Q$16),MIN($E34,Q$17),Ha",
+        "R": "=IF(AND($D34<=R$17,$E34>=R$16),$C34*NETWORKDAYS(MAX($D34,R$16),MIN($E34,R$17),Ha",
+        "S": "=IF(AND($D34<=S$17,$E34>=S$16),$C34*NETWORKDAYS(MAX($D34,S$16),MIN($E34,S$17),Ha"
+      }
+    },
+    {
+      "r": 35,
+      "cells": {
+        "B": "Design Review & Fix",
+        "C": "0.03",
+        "D": "2026-06-10 00:00:00",
+        "E": "2026-06-11 00:00:00",
+        "F": "=C35",
+        "G": "=SUM(P35:AZ35)",
+        "H": "=NETWORKDAYS(D35,E35,Hari_Libur)",
+        "I": "=IF($C$8>=E35,1,IF($C$8<D35,0,IF(NETWORKDAYS(D35,E35,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I35*F35",
+        "K": "0",
+        "L": "=C35*K35",
+        "M": "=L35-J35",
+        "N": "=C35",
+        "O": "=SUM(P35:BK35)",
+        "P": "=IF(AND($D35<=P$17,$E35>=P$16),$C35*NETWORKDAYS(MAX($D35,P$16),MIN($E35,P$17),Ha",
+        "Q": "=IF(AND($D35<=Q$17,$E35>=Q$16),$C35*NETWORKDAYS(MAX($D35,Q$16),MIN($E35,Q$17),Ha",
+        "R": "=IF(AND($D35<=R$17,$E35>=R$16),$C35*NETWORKDAYS(MAX($D35,R$16),MIN($E35,R$17),Ha",
+        "S": "=IF(AND($D35<=S$17,$E35>=S$16),$C35*NETWORKDAYS(MAX($D35,S$16),MIN($E35,S$17),Ha"
+      }
+    },
+    {
+      "r": 36,
+      "cells": {
+        "B": "Design Sign off",
+        "C": "0.05",
+        "D": "2026-06-11 00:00:00",
+        "E": "2026-06-11 00:00:00",
+        "F": "=C36",
+        "G": "=SUM(P36:AZ36)",
+        "H": "=NETWORKDAYS(D36,E36,Hari_Libur)",
+        "I": "=IF($C$8>=E36,1,IF($C$8<D36,0,IF(NETWORKDAYS(D36,E36,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I36*F36",
+        "K": "0",
+        "L": "=C36*K36",
+        "M": "=L36-J36",
+        "N": "=C36",
+        "O": "=SUM(P36:BK36)",
+        "P": "=IF(AND($D36<=P$17,$E36>=P$16),$C36*NETWORKDAYS(MAX($D36,P$16),MIN($E36,P$17),Ha",
+        "Q": "=IF(AND($D36<=Q$17,$E36>=Q$16),$C36*NETWORKDAYS(MAX($D36,Q$16),MIN($E36,Q$17),Ha",
+        "R": "=IF(AND($D36<=R$17,$E36>=R$16),$C36*NETWORKDAYS(MAX($D36,R$16),MIN($E36,R$17),Ha",
+        "S": "=IF(AND($D36<=S$17,$E36>=S$16),$C36*NETWORKDAYS(MAX($D36,S$16),MIN($E36,S$17),Ha"
+      }
+    },
+    {
+      "r": 37,
+      "cells": {
+        "P": "=IF(AND($D37<=P$17,$E37>=P$16),$C37*NETWORKDAYS(MAX($D37,P$16),MIN($E37,P$17),Li",
+        "Q": "=IF(AND($D37<=Q$17,$E37>=Q$16),$C37*NETWORKDAYS(MAX($D37,Q$16),MIN($E37,Q$17),Li",
+        "R": "=IF(AND($D37<=R$17,$E37>=R$16),$C37*NETWORKDAYS(MAX($D37,R$16),MIN($E37,R$17),Li",
+        "S": "=IF(AND($D37<=S$17,$E37>=S$16),$C37*NETWORKDAYS(MAX($D37,S$16),MIN($E37,S$17),Li"
+      }
+    },
+    {
+      "r": 38,
+      "cells": {
+        "A": "V",
+        "B": "DEVELOPMENT",
+        "C": "=SUM(C39:C41)",
+        "D": "=MIN(D39:D41)",
+        "E": "=MAX(E39:E41)",
+        "H": "=NETWORKDAYS(D38,E38,Hari_Libur)",
+        "I": "=IF(C38=0,0,J38/C38)",
+        "J": "=SUM(J39:J41)",
+        "K": "=IF(C38=0,0,L38/C38)",
+        "L": "=SUM(L39:L41)",
+        "M": "=SUM(M39:M41)"
+      }
+    },
+    {
+      "r": 39,
+      "cells": {
+        "B": "Core Feature Development",
+        "C": "0.15",
+        "D": "2026-06-12 00:00:00",
+        "E": "2026-07-02 00:00:00",
+        "F": "=C39",
+        "G": "=SUM(P39:AZ39)",
+        "H": "=NETWORKDAYS(D39,E39,Hari_Libur)",
+        "I": "=IF($C$8>=E39,1,IF($C$8<D39,0,IF(NETWORKDAYS(D39,E39,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I39*F39",
+        "K": "0",
+        "L": "=C39*K39",
+        "M": "=L39-J39",
+        "N": "=C39",
+        "O": "=SUM(P39:BK39)",
+        "P": "=IF(AND($D39<=P$17,$E39>=P$16),$C39*NETWORKDAYS(MAX($D39,P$16),MIN($E39,P$17),Ha",
+        "Q": "=IF(AND($D39<=Q$17,$E39>=Q$16),$C39*NETWORKDAYS(MAX($D39,Q$16),MIN($E39,Q$17),Ha",
+        "R": "=IF(AND($D39<=R$17,$E39>=R$16),$C39*NETWORKDAYS(MAX($D39,R$16),MIN($E39,R$17),Ha",
+        "S": "=IF(AND($D39<=S$17,$E39>=S$16),$C39*NETWORKDAYS(MAX($D39,S$16),MIN($E39,S$17),Ha"
+      }
+    },
+    {
+      "r": 40,
+      "cells": {
+        "B": "Integration (Guci & Ossera)",
+        "C": "0.15",
+        "D": "2026-06-16 00:00:00",
+        "E": "2026-07-09 00:00:00",
+        "F": "=C40",
+        "G": "=SUM(P40:AZ40)",
+        "H": "=NETWORKDAYS(D40,E40,Hari_Libur)",
+        "I": "=IF($C$8>=E40,1,IF($C$8<D40,0,IF(NETWORKDAYS(D40,E40,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I40*F40",
+        "K": "0",
+        "L": "=C40*K40",
+        "M": "=L40-J40",
+        "N": "=C40",
+        "O": "=SUM(P40:BK40)",
+        "P": "=IF(AND($D40<=P$17,$E40>=P$16),$C40*NETWORKDAYS(MAX($D40,P$16),MIN($E40,P$17),Ha",
+        "Q": "=IF(AND($D40<=Q$17,$E40>=Q$16),$C40*NETWORKDAYS(MAX($D40,Q$16),MIN($E40,Q$17),Ha",
+        "R": "=IF(AND($D40<=R$17,$E40>=R$16),$C40*NETWORKDAYS(MAX($D40,R$16),MIN($E40,R$17),Ha",
+        "S": "=IF(AND($D40<=S$17,$E40>=S$16),$C40*NETWORKDAYS(MAX($D40,S$16),MIN($E40,S$17),Ha"
+      }
+    },
+    {
+      "r": 41,
+      "cells": {
+        "B": "Bug Fixing Cycle",
+        "C": "0.12",
+        "D": "2026-07-10 00:00:00",
+        "E": "2026-07-16 00:00:00",
+        "F": "=C41",
+        "G": "=SUM(P41:AZ41)",
+        "H": "=NETWORKDAYS(D41,E41,Hari_Libur)",
+        "I": "=IF($C$8>=E41,1,IF($C$8<D41,0,IF(NETWORKDAYS(D41,E41,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I41*F41",
+        "K": "0",
+        "L": "=C41*K41",
+        "M": "=L41-J41",
+        "N": "=C41",
+        "O": "=SUM(P41:BK41)",
+        "P": "=IF(AND($D41<=P$17,$E41>=P$16),$C41*NETWORKDAYS(MAX($D41,P$16),MIN($E41,P$17),Ha",
+        "Q": "=IF(AND($D41<=Q$17,$E41>=Q$16),$C41*NETWORKDAYS(MAX($D41,Q$16),MIN($E41,Q$17),Ha",
+        "R": "=IF(AND($D41<=R$17,$E41>=R$16),$C41*NETWORKDAYS(MAX($D41,R$16),MIN($E41,R$17),Ha",
+        "S": "=IF(AND($D41<=S$17,$E41>=S$16),$C41*NETWORKDAYS(MAX($D41,S$16),MIN($E41,S$17),Ha"
+      }
+    },
+    {
+      "r": 42,
+      "cells": {
+        "P": "=IF(AND($D42<=P$17,$E42>=P$16),$C42*NETWORKDAYS(MAX($D42,P$16),MIN($E42,P$17),Li",
+        "Q": "=IF(AND($D42<=Q$17,$E42>=Q$16),$C42*NETWORKDAYS(MAX($D42,Q$16),MIN($E42,Q$17),Li",
+        "R": "=IF(AND($D42<=R$17,$E42>=R$16),$C42*NETWORKDAYS(MAX($D42,R$16),MIN($E42,R$17),Li",
+        "S": "=IF(AND($D42<=S$17,$E42>=S$16),$C42*NETWORKDAYS(MAX($D42,S$16),MIN($E42,S$17),Li"
+      }
+    },
+    {
+      "r": 43,
+      "cells": {
+        "A": "VI",
+        "B": "TESTING",
+        "C": "=SUM(C44:C49)",
+        "D": "=MIN(D44:D49)",
+        "E": "=MAX(E44:E49)",
+        "H": "=NETWORKDAYS(D43,E43,Hari_Libur)",
+        "I": "=IF(C43=0,0,J43/C43)",
+        "J": "=SUM(J44:J49)",
+        "K": "=IF(C43=0,0,L43/C43)",
+        "L": "=SUM(L44:L49)",
+        "M": "=SUM(M44:M49)"
+      }
+    },
+    {
+      "r": 44,
+      "cells": {
+        "B": "Internal Testing",
+        "C": "0.02",
+        "D": "2026-07-17 00:00:00",
+        "E": "2026-07-22 00:00:00",
+        "F": "=C44",
+        "G": "=SUM(P44:AZ44)",
+        "H": "=NETWORKDAYS(D44,E44,Hari_Libur)",
+        "I": "=IF($C$8>=E44,1,IF($C$8<D44,0,IF(NETWORKDAYS(D44,E44,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I44*F44",
+        "K": "0",
+        "L": "=C44*K44",
+        "M": "=L44-J44",
+        "N": "=C44",
+        "O": "=SUM(P44:BK44)",
+        "P": "=IF(AND($D44<=P$17,$E44>=P$16),$C44*NETWORKDAYS(MAX($D44,P$16),MIN($E44,P$17),Ha",
+        "Q": "=IF(AND($D44<=Q$17,$E44>=Q$16),$C44*NETWORKDAYS(MAX($D44,Q$16),MIN($E44,Q$17),Ha",
+        "R": "=IF(AND($D44<=R$17,$E44>=R$16),$C44*NETWORKDAYS(MAX($D44,R$16),MIN($E44,R$17),Ha",
+        "S": "=IF(AND($D44<=S$17,$E44>=S$16),$C44*NETWORKDAYS(MAX($D44,S$16),MIN($E44,S$17),Ha"
+      }
+    },
+    {
+      "r": 45,
+      "cells": {
+        "B": "SIT",
+        "C": "0.01",
+        "D": "2026-07-23 00:00:00",
+        "E": "2026-07-28 00:00:00",
+        "F": "=C45",
+        "G": "=SUM(P45:AZ45)",
+        "H": "=NETWORKDAYS(D45,E45,Hari_Libur)",
+        "I": "=IF($C$8>=E45,1,IF($C$8<D45,0,IF(NETWORKDAYS(D45,E45,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I45*F45",
+        "K": "0",
+        "L": "=C45*K45",
+        "M": "=L45-J45",
+        "N": "=C45",
+        "O": "=SUM(P45:BK45)",
+        "P": "=IF(AND($D45<=P$17,$E45>=P$16),$C45*NETWORKDAYS(MAX($D45,P$16),MIN($E45,P$17),Ha",
+        "Q": "=IF(AND($D45<=Q$17,$E45>=Q$16),$C45*NETWORKDAYS(MAX($D45,Q$16),MIN($E45,Q$17),Ha",
+        "R": "=IF(AND($D45<=R$17,$E45>=R$16),$C45*NETWORKDAYS(MAX($D45,R$16),MIN($E45,R$17),Ha",
+        "S": "=IF(AND($D45<=S$17,$E45>=S$16),$C45*NETWORKDAYS(MAX($D45,S$16),MIN($E45,S$17),Ha"
+      }
+    },
+    {
+      "r": 46,
+      "cells": {
+        "B": "SIT Fixing",
+        "C": "0.02",
+        "D": "2026-07-29 00:00:00",
+        "E": "2026-07-31 00:00:00",
+        "F": "=C46",
+        "G": "=SUM(P46:AZ46)",
+        "H": "=NETWORKDAYS(D46,E46,Hari_Libur)",
+        "I": "=IF($C$8>=E46,1,IF($C$8<D46,0,IF(NETWORKDAYS(D46,E46,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I46*F46",
+        "K": "0",
+        "L": "=C46*K46",
+        "M": "=L46-J46",
+        "N": "=C46",
+        "O": "=SUM(P46:BK46)",
+        "P": "=IF(AND($D46<=P$17,$E46>=P$16),$C46*NETWORKDAYS(MAX($D46,P$16),MIN($E46,P$17),Ha",
+        "Q": "=IF(AND($D46<=Q$17,$E46>=Q$16),$C46*NETWORKDAYS(MAX($D46,Q$16),MIN($E46,Q$17),Ha",
+        "R": "=IF(AND($D46<=R$17,$E46>=R$16),$C46*NETWORKDAYS(MAX($D46,R$16),MIN($E46,R$17),Ha",
+        "S": "=IF(AND($D46<=S$17,$E46>=S$16),$C46*NETWORKDAYS(MAX($D46,S$16),MIN($E46,S$17),Ha"
+      }
+    },
+    {
+      "r": 47,
+      "cells": {
+        "B": "UAT",
+        "C": "0.02",
+        "D": "2026-08-03 00:00:00",
+        "E": "2026-08-06 00:00:00",
+        "F": "=C47",
+        "G": "=SUM(P47:AZ47)",
+        "H": "=NETWORKDAYS(D47,E47,Hari_Libur)",
+        "I": "=IF($C$8>=E47,1,IF($C$8<D47,0,IF(NETWORKDAYS(D47,E47,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I47*F47",
+        "K": "0",
+        "L": "=C47*K47",
+        "M": "=L47-J47",
+        "N": "=C47",
+        "O": "=SUM(P47:BK47)",
+        "P": "=IF(AND($D47<=P$17,$E47>=P$16),$C47*NETWORKDAYS(MAX($D47,P$16),MIN($E47,P$17),Ha",
+        "Q": "=IF(AND($D47<=Q$17,$E47>=Q$16),$C47*NETWORKDAYS(MAX($D47,Q$16),MIN($E47,Q$17),Ha",
+        "R": "=IF(AND($D47<=R$17,$E47>=R$16),$C47*NETWORKDAYS(MAX($D47,R$16),MIN($E47,R$17),Ha",
+        "S": "=IF(AND($D47<=S$17,$E47>=S$16),$C47*NETWORKDAYS(MAX($D47,S$16),MIN($E47,S$17),Ha"
+      }
+    },
+    {
+      "r": 48,
+      "cells": {
+        "B": "Bug Fixing Cycle",
+        "C": "0.02",
+        "D": "2026-08-07 00:00:00",
+        "E": "2026-08-11 00:00:00",
+        "F": "=C48",
+        "G": "=SUM(P48:AZ48)",
+        "H": "=NETWORKDAYS(D48,E48,Hari_Libur)",
+        "I": "=IF($C$8>=E48,1,IF($C$8<D48,0,IF(NETWORKDAYS(D48,E48,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I48*F48",
+        "K": "0",
+        "L": "=C48*K48",
+        "M": "=L48-J48",
+        "N": "=C48",
+        "O": "=SUM(P48:BK48)",
+        "P": "=IF(AND($D48<=P$17,$E48>=P$16),$C48*NETWORKDAYS(MAX($D48,P$16),MIN($E48,P$17),Ha",
+        "Q": "=IF(AND($D48<=Q$17,$E48>=Q$16),$C48*NETWORKDAYS(MAX($D48,Q$16),MIN($E48,Q$17),Ha",
+        "R": "=IF(AND($D48<=R$17,$E48>=R$16),$C48*NETWORKDAYS(MAX($D48,R$16),MIN($E48,R$17),Ha",
+        "S": "=IF(AND($D48<=S$17,$E48>=S$16),$C48*NETWORKDAYS(MAX($D48,S$16),MIN($E48,S$17),Ha"
+      }
+    },
+    {
+      "r": 49,
+      "cells": {
+        "B": "UAT Sign Off",
+        "C": "0.01",
+        "D": "2026-08-11 00:00:00",
+        "E": "2026-08-11 00:00:00",
+        "F": "=C49",
+        "G": "=SUM(P49:AZ49)",
+        "H": "=NETWORKDAYS(D49,E49,Hari_Libur)",
+        "I": "=IF($C$8>=E49,1,IF($C$8<D49,0,IF(NETWORKDAYS(D49,E49,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I49*F49",
+        "K": "0",
+        "L": "=C49*K49",
+        "M": "=L49-J49",
+        "N": "=C49",
+        "O": "=SUM(P49:BK49)",
+        "P": "=IF(AND($D49<=P$17,$E49>=P$16),$C49*NETWORKDAYS(MAX($D49,P$16),MIN($E49,P$17),Ha",
+        "Q": "=IF(AND($D49<=Q$17,$E49>=Q$16),$C49*NETWORKDAYS(MAX($D49,Q$16),MIN($E49,Q$17),Ha",
+        "R": "=IF(AND($D49<=R$17,$E49>=R$16),$C49*NETWORKDAYS(MAX($D49,R$16),MIN($E49,R$17),Ha",
+        "S": "=IF(AND($D49<=S$17,$E49>=S$16),$C49*NETWORKDAYS(MAX($D49,S$16),MIN($E49,S$17),Ha"
+      }
+    },
+    {
+      "r": 50,
+      "cells": {
+        "P": "=IF(AND($D50<=P$17,$E50>=P$16),$C50*NETWORKDAYS(MAX($D50,P$16),MIN($E50,P$17),Li",
+        "Q": "=IF(AND($D50<=Q$17,$E50>=Q$16),$C50*NETWORKDAYS(MAX($D50,Q$16),MIN($E50,Q$17),Li",
+        "R": "=IF(AND($D50<=R$17,$E50>=R$16),$C50*NETWORKDAYS(MAX($D50,R$16),MIN($E50,R$17),Li",
+        "S": "=IF(AND($D50<=S$17,$E50>=S$16),$C50*NETWORKDAYS(MAX($D50,S$16),MIN($E50,S$17),Li"
+      }
+    },
+    {
+      "r": 51,
+      "cells": {
+        "A": "VII",
+        "B": "SAST DAST",
+        "C": "=SUM(C52:C54)",
+        "D": "=MIN(D52:D54)",
+        "E": "=MAX(E52:E54)",
+        "H": "=NETWORKDAYS(D51,E51,Hari_Libur)",
+        "I": "=IF(C51=0,0,J51/C51)",
+        "J": "=SUM(J52:J54)",
+        "K": "=IF(C51=0,0,L51/C51)",
+        "L": "=SUM(L52:L54)",
+        "M": "=SUM(M52:M54)"
+      }
+    },
+    {
+      "r": 52,
+      "cells": {
+        "B": "SAST DAST",
+        "C": "0.02",
+        "D": "2026-08-13 00:00:00",
+        "E": "2026-08-14 00:00:00",
+        "F": "=C52",
+        "G": "=SUM(P52:AZ52)",
+        "H": "=NETWORKDAYS(D52,E52,Hari_Libur)",
+        "I": "=IF($C$8>=E52,1,IF($C$8<D52,0,IF(NETWORKDAYS(D52,E52,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I52*F52",
+        "K": "0",
+        "L": "=C52*K52",
+        "M": "=L52-J52",
+        "N": "=C52",
+        "O": "=SUM(P52:BK52)",
+        "P": "=IF(AND($D52<=P$17,$E52>=P$16),$C52*NETWORKDAYS(MAX($D52,P$16),MIN($E52,P$17),Ha",
+        "Q": "=IF(AND($D52<=Q$17,$E52>=Q$16),$C52*NETWORKDAYS(MAX($D52,Q$16),MIN($E52,Q$17),Ha",
+        "R": "=IF(AND($D52<=R$17,$E52>=R$16),$C52*NETWORKDAYS(MAX($D52,R$16),MIN($E52,R$17),Ha",
+        "S": "=IF(AND($D52<=S$17,$E52>=S$16),$C52*NETWORKDAYS(MAX($D52,S$16),MIN($E52,S$17),Ha"
+      }
+    },
+    {
+      "r": 53,
+      "cells": {
+        "B": "Fixing SAST DAST",
+        "C": "0.03",
+        "D": "2026-08-18 00:00:00",
+        "E": "2026-08-19 00:00:00",
+        "F": "=C53",
+        "G": "=SUM(P53:AZ53)",
+        "H": "=NETWORKDAYS(D53,E53,Hari_Libur)",
+        "I": "=IF($C$8>=E53,1,IF($C$8<D53,0,IF(NETWORKDAYS(D53,E53,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I53*F53",
+        "K": "0",
+        "L": "=C53*K53",
+        "M": "=L53-J53",
+        "N": "=C53",
+        "O": "=SUM(P53:BK53)",
+        "P": "=IF(AND($D53<=P$17,$E53>=P$16),$C53*NETWORKDAYS(MAX($D53,P$16),MIN($E53,P$17),Ha",
+        "Q": "=IF(AND($D53<=Q$17,$E53>=Q$16),$C53*NETWORKDAYS(MAX($D53,Q$16),MIN($E53,Q$17),Ha",
+        "R": "=IF(AND($D53<=R$17,$E53>=R$16),$C53*NETWORKDAYS(MAX($D53,R$16),MIN($E53,R$17),Ha",
+        "S": "=IF(AND($D53<=S$17,$E53>=S$16),$C53*NETWORKDAYS(MAX($D53,S$16),MIN($E53,S$17),Ha"
+      }
+    },
+    {
+      "r": 54,
+      "cells": {
+        "B": "SAST DAST Re-Test",
+        "C": "0.01",
+        "D": "2026-08-20 00:00:00",
+        "E": "2026-08-20 00:00:00",
+        "F": "=C54",
+        "G": "=SUM(P54:AZ54)",
+        "H": "=NETWORKDAYS(D54,E54,Hari_Libur)",
+        "I": "=IF($C$8>=E54,1,IF($C$8<D54,0,IF(NETWORKDAYS(D54,E54,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I54*F54",
+        "K": "0",
+        "L": "=C54*K54",
+        "M": "=L54-J54",
+        "N": "=C54",
+        "O": "=SUM(P54:BK54)",
+        "P": "=IF(AND($D54<=P$17,$E54>=P$16),$C54*NETWORKDAYS(MAX($D54,P$16),MIN($E54,P$17),Ha",
+        "Q": "=IF(AND($D54<=Q$17,$E54>=Q$16),$C54*NETWORKDAYS(MAX($D54,Q$16),MIN($E54,Q$17),Ha",
+        "R": "=IF(AND($D54<=R$17,$E54>=R$16),$C54*NETWORKDAYS(MAX($D54,R$16),MIN($E54,R$17),Ha",
+        "S": "=IF(AND($D54<=S$17,$E54>=S$16),$C54*NETWORKDAYS(MAX($D54,S$16),MIN($E54,S$17),Ha"
+      }
+    },
+    {
+      "r": 55,
+      "cells": {
+        "P": "=IF(AND($D55<=P$17,$E55>=P$16),$C55*NETWORKDAYS(MAX($D55,P$16),MIN($E55,P$17),Li",
+        "Q": "=IF(AND($D55<=Q$17,$E55>=Q$16),$C55*NETWORKDAYS(MAX($D55,Q$16),MIN($E55,Q$17),Li",
+        "R": "=IF(AND($D55<=R$17,$E55>=R$16),$C55*NETWORKDAYS(MAX($D55,R$16),MIN($E55,R$17),Li",
+        "S": "=IF(AND($D55<=S$17,$E55>=S$16),$C55*NETWORKDAYS(MAX($D55,S$16),MIN($E55,S$17),Li"
+      }
+    },
+    {
+      "r": 56,
+      "cells": {
+        "A": "VIII",
+        "B": "DEPLOY",
+        "C": "=SUM(C57:C59)",
+        "D": "=MIN(D57:D58)",
+        "E": "=MAX(E57:E58)",
+        "H": "=NETWORKDAYS(D56,E56,Hari_Libur)",
+        "I": "=IF(C56=0,0,J56/C56)",
+        "J": "=SUM(J57:J58)",
+        "K": "=IF(C56=0,0,L56/C56)",
+        "L": "=SUM(L57:L58)",
+        "M": "=SUM(M57:M58)"
+      }
+    },
+    {
+      "r": 57,
+      "cells": {
+        "B": "Deploy Preparation",
+        "C": "0.03",
+        "D": "2026-08-21 00:00:00",
+        "E": "2026-08-24 00:00:00",
+        "F": "=C57",
+        "G": "=SUM(P57:AZ57)",
+        "H": "=NETWORKDAYS(D57,E57,Hari_Libur)",
+        "I": "=IF($C$8>=E57,1,IF($C$8<D57,0,IF(NETWORKDAYS(D57,E57,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I57*F57",
+        "K": "0",
+        "L": "=C57*K57",
+        "M": "=L57-J57",
+        "N": "=C57",
+        "O": "=SUM(P57:BK57)",
+        "P": "=IF(AND($D57<=P$17,$E57>=P$16),$C57*NETWORKDAYS(MAX($D57,P$16),MIN($E57,P$17),Ha",
+        "Q": "=IF(AND($D57<=Q$17,$E57>=Q$16),$C57*NETWORKDAYS(MAX($D57,Q$16),MIN($E57,Q$17),Ha",
+        "R": "=IF(AND($D57<=R$17,$E57>=R$16),$C57*NETWORKDAYS(MAX($D57,R$16),MIN($E57,R$17),Ha",
+        "S": "=IF(AND($D57<=S$17,$E57>=S$16),$C57*NETWORKDAYS(MAX($D57,S$16),MIN($E57,S$17),Ha"
+      }
+    },
+    {
+      "r": 58,
+      "cells": {
+        "B": "Deployment",
+        "C": "0.03",
+        "D": "2026-08-25 00:00:00",
+        "E": "2026-08-27 00:00:00",
+        "F": "=C58",
+        "G": "=SUM(P58:AZ58)",
+        "H": "=NETWORKDAYS(D58,E58,Hari_Libur)",
+        "I": "=IF($C$8>=E58,1,IF($C$8<D58,0,IF(NETWORKDAYS(D58,E58,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I58*F58",
+        "K": "0",
+        "L": "=C58*K58",
+        "M": "=L58-J58",
+        "N": "=C58",
+        "O": "=SUM(P58:BK58)",
+        "P": "=IF(AND($D58<=P$17,$E58>=P$16),$C58*NETWORKDAYS(MAX($D58,P$16),MIN($E58,P$17),Ha",
+        "Q": "=IF(AND($D58<=Q$17,$E58>=Q$16),$C58*NETWORKDAYS(MAX($D58,Q$16),MIN($E58,Q$17),Ha",
+        "R": "=IF(AND($D58<=R$17,$E58>=R$16),$C58*NETWORKDAYS(MAX($D58,R$16),MIN($E58,R$17),Ha",
+        "S": "=IF(AND($D58<=S$17,$E58>=S$16),$C58*NETWORKDAYS(MAX($D58,S$16),MIN($E58,S$17),Ha"
+      }
+    },
+    {
+      "r": 59,
+      "cells": {
+        "P": "=IF(AND($D59<=P$17,$E59>=P$16),$C59*NETWORKDAYS(MAX($D59,P$16),MIN($E59,P$17),Li",
+        "Q": "=IF(AND($D59<=Q$17,$E59>=Q$16),$C59*NETWORKDAYS(MAX($D59,Q$16),MIN($E59,Q$17),Li",
+        "R": "=IF(AND($D59<=R$17,$E59>=R$16),$C59*NETWORKDAYS(MAX($D59,R$16),MIN($E59,R$17),Li",
+        "S": "=IF(AND($D59<=S$17,$E59>=S$16),$C59*NETWORKDAYS(MAX($D59,S$16),MIN($E59,S$17),Li"
+      }
+    },
+    {
+      "r": 60,
+      "cells": {
+        "A": "IX",
+        "B": "Go Live",
+        "C": "0.01",
+        "D": "2026-08-28 00:00:00",
+        "E": "2026-08-28 00:00:00",
+        "F": "=C60",
+        "G": "=SUM(P60:AZ60)",
+        "H": "=NETWORKDAYS(D60,E60,Hari_Libur)",
+        "I": "=IF($C$8>=E60,1,IF($C$8<D60,0,IF(NETWORKDAYS(D60,E60,Hari_Libur)=0,0,NETWORKDAYS",
+        "J": "=I60*F60",
+        "K": "0",
+        "L": "=C60*K60",
+        "M": "=L60-J60",
+        "N": "=C60",
+        "O": "=SUM(P60:BK60)",
+        "P": "=IF(AND($D60<=P$17,$E60>=P$16),$C60*NETWORKDAYS(MAX($D60,P$16),MIN($E60,P$17),Ha",
+        "Q": "=IF(AND($D60<=Q$17,$E60>=Q$16),$C60*NETWORKDAYS(MAX($D60,Q$16),MIN($E60,Q$17),Ha",
+        "R": "=IF(AND($D60<=R$17,$E60>=R$16),$C60*NETWORKDAYS(MAX($D60,R$16),MIN($E60,R$17),Ha",
+        "S": "=IF(AND($D60<=S$17,$E60>=S$16),$C60*NETWORKDAYS(MAX($D60,S$16),MIN($E60,S$17),Ha"
+      }
+    },
+    {
+      "r": 62,
+      "cells": {
+        "B": "TOTAL",
+        "C": "=SUM(C21:C21,C25:C26,C29:C30,C33:C36,C39:C41,C44:C49,C52:C54,C57:C58,C60:C60)",
+        "F": "Target (%)",
+        "J": "=SUM(J21:J21,J25:J26,J29:J30,J33:J36,J39:J41,J44:J49,J52:J54,J57:J58,J60:J60)",
+        "L": "=SUM(L21:L21,L25:L26,L29:L30,L33:L36,L39:L41,L44:L49,L52:L54,L57:L58,L60:L60)",
+        "M": "=SUM(M21:M21,M25:M26,M29:M30,M33:M36,M39:M41,M44:M49,M52:M54,M57:M58,M60:M60)",
+        "O": "=SUM(O21:O21,O25:O26,O29:O30,O33:O36,O39:O41,O44:O49,O52:O54,O57:O58,O60:O60)",
+        "P": "=SUM(P21:P21,P25:P26,P29:P30,P33:P36,P39:P41,P44:P49,P52:P54,P57:P58,P60:P60)",
+        "Q": "=SUM(Q21:Q21,Q25:Q26,Q29:Q30,Q33:Q36,Q39:Q41,Q44:Q49,Q52:Q54,Q57:Q58,Q60:Q60)",
+        "R": "=SUM(R21:R21,R25:R26,R29:R30,R33:R36,R39:R41,R44:R49,R52:R54,R57:R58,R60:R60)",
+        "S": "=SUM(S21:S21,S25:S26,S29:S30,S33:S36,S39:S41,S44:S49,S52:S54,S57:S58,S60:S60)"
+      }
+    },
+    {
+      "r": 63,
+      "cells": {
+        "F": "Actual (%)"
+      }
+    },
+    {
+      "r": 66,
+      "cells": {
+        "O": "Date",
+        "P": "=MAX(P16,P17)",
+        "Q": "=MAX(Q16,Q17)",
+        "R": "=MAX(R16,R17)",
+        "S": "=MAX(S16,S17)"
+      }
+    },
+    {
+      "r": 67,
+      "cells": {
+        "O": "Target Linear (%)",
+        "P": "=P62",
+        "Q": "=+Q62+P67",
+        "R": "=+R62+Q67",
+        "S": "=+S62+R67"
+      }
+    },
+    {
+      "r": 68,
+      "cells": {
+        "O": "Cummulative Actual (%)",
+        "P": "=IF(ISNUMBER(INDEX(Log_Mingguan!$D$8:$D$55,COLUMNS($P68:P68))),INDEX(Log_Minggua",
+        "Q": "=IF(ISNUMBER(INDEX(Log_Mingguan!$D$8:$D$55,COLUMNS($P68:Q68))),INDEX(Log_Minggua",
+        "R": "=IF(ISNUMBER(INDEX(Log_Mingguan!$D$8:$D$55,COLUMNS($P68:R68))),INDEX(Log_Minggua",
+        "S": "=IF(ISNUMBER(INDEX(Log_Mingguan!$D$8:$D$55,COLUMNS($P68:S68))),INDEX(Log_Minggua"
+      }
+    },
+    {
+      "r": 69,
+      "cells": {
+        "O": "Deviation",
+        "P": "=IF(ISNUMBER(P68),P68-P67,\"\")",
+        "Q": "=IF(ISNUMBER(Q68),Q68-Q67,\"\")",
+        "R": "=IF(ISNUMBER(R68),R68-R67,\"\")",
+        "S": "=IF(ISNUMBER(S68),S68-S67,\"\")"
+      }
+    }
+  ],
+  "milestone progress": [
+    {
+      "r": 1,
+      "cells": {
+        "A": "No",
+        "B": "Task",
+        "C": "Bobot",
+        "D": "Start Date",
+        "E": "Finish Date",
+        "H": "Duration",
+        "I": "Linear Target",
+        "J": "Linear Target",
+        "K": "Actual Progress",
+        "L": "Actual Progress",
+        "M": "Deviation"
+      }
+    },
+    {
+      "r": 2,
+      "cells": {
+        "A": "I",
+        "B": "Initiation & Analysis",
+        "C": "0.02",
+        "D": "2026-01-12 00:00:00",
+        "E": "2026-01-12 00:00:00",
+        "H": "1",
+        "J": "1",
+        "L": "=SCurve!K20",
+        "M": "=L2-J2"
+      }
+    },
+    {
+      "r": 3,
+      "cells": {
+        "A": "II",
+        "B": "Requirement, Analisa & Desain",
+        "C": "0.15",
+        "D": "2026-01-13 00:00:00",
+        "E": "2026-01-27 00:00:00",
+        "H": "11",
+        "J": "1",
+        "L": "=SCurve!#REF!",
+        "M": "=L3-J3"
+      }
+    },
+    {
+      "r": 4,
+      "cells": {
+        "A": "II",
+        "B": "DevOps & CMS Setup",
+        "C": "0.1",
+        "D": "2026-01-12 00:00:00",
+        "E": "2026-01-23 00:00:00",
+        "H": "10",
+        "J": "1",
+        "L": "=SCurve!#REF!",
+        "M": "=L4-J4"
+      }
+    },
+    {
+      "r": 5,
+      "cells": {
+        "A": "III",
+        "B": "Project Implementation",
+        "C": "0.36",
+        "D": "2026-01-29 00:00:00",
+        "E": "2026-04-28 00:00:00",
+        "F": "0.13",
+        "G": "0.13",
+        "H": "64",
+        "I": "0",
+        "J": "=SCurve!I24",
+        "L": "=SCurve!K24",
+        "M": "=L5-J5"
+      }
+    },
+    {
+      "r": 6,
+      "cells": {
+        "A": "IV",
+        "B": "Testing & UAT",
+        "C": "0.18",
+        "D": "2026-02-13 00:00:00",
+        "E": "2026-02-24 00:00:00",
+        "F": "0.14",
+        "G": "0.14",
+        "H": "8",
+        "I": "0",
+        "J": "0",
+        "L": "=SCurve!K56",
+        "M": "=L6-J6"
+      }
+    },
+    {
+      "r": 7,
+      "cells": {
+        "A": "V",
+        "B": "Pentest",
+        "C": "0.03",
+        "D": "2026-05-08 00:00:00",
+        "E": "2026-06-11 00:00:00",
+        "H": "25",
+        "J": "0",
+        "L": "0"
+      }
+    },
+    {
+      "r": 8,
+      "cells": {
+        "A": "VI",
+        "B": "Training",
+        "C": "0.04",
+        "D": "2026-06-12 00:00:00",
+        "E": "2026-06-17 00:00:00",
+        "H": "4",
+        "J": "0",
+        "L": "=SCurve!#REF!"
+      }
+    },
+    {
+      "r": 9,
+      "cells": {
+        "A": "VII",
+        "B": "Go Live Preparation",
+        "C": "0.08",
+        "D": "2026-06-12 00:00:00",
+        "E": "2026-06-24 00:00:00",
+        "H": "9",
+        "J": "0",
+        "L": "=SCurve!#REF!"
+      }
+    },
+    {
+      "r": 10,
+      "cells": {
+        "A": "VIII",
+        "B": "Go Live",
+        "C": "0.04",
+        "D": "2026-06-25 00:00:00",
+        "E": "2026-06-25 00:00:00",
+        "H": "1",
+        "J": "0",
+        "L": "=SCurve!#REF!"
+      }
+    },
+    {
+      "r": 17,
+      "cells": {
+        "B": "Total",
+        "J": "=SCurve!J62",
+        "L": "=SCurve!L62"
+      }
+    }
+  ]
+}
