@@ -1,5 +1,9 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+logger = logging.getLogger("pdc")
 
 from app.database import Base, SessionLocal, engine
 import app.models  # noqa: F401
@@ -8,6 +12,7 @@ from app.routers import (
     change_requests,
     auth,
     clickup,
+    google_drive_integration,
     dashboard,
     documents,
     evaluations,
@@ -44,7 +49,7 @@ app = FastAPI(title="Project Delivery Control", version="0.3.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -64,6 +69,7 @@ app.include_router(reports.router, prefix="/api")
 app.include_router(health.router, prefix="/api")
 app.include_router(milestones.router, prefix="/api")
 app.include_router(clickup.router, prefix="/api")
+app.include_router(google_drive_integration.router, prefix="/api")
 app.include_router(sph.router, prefix="/api")
 app.include_router(timeline_templates.router, prefix="/api")
 app.include_router(project_roster.router, prefix="/api")
@@ -79,6 +85,13 @@ app.include_router(evaluations.router, prefix="/api")
 
 @app.on_event("startup")
 def on_startup():
+    if settings.app_env != "production" and settings.jwt_secret_is_weak:
+        logger.warning(
+            "JWT_SECRET is weak or default — set a random 32+ char secret in .env "
+            "(required when APP_ENV=production)."
+        )
+    if "*" in settings.cors_origins:
+        raise RuntimeError("Invalid CORS_ORIGINS: wildcard not allowed with credentials")
     Base.metadata.create_all(bind=engine)
     ensure_phase_af_columns(engine)
     if not settings.skip_template_verify:

@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 uploads/
 .venv/
+# Google Cloud service account key files (credentials live in DB via Settings UI)
+*service*account*.json
+*gserviceaccount*.json
+*essential-rider*.json

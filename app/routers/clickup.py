@@ -26,6 +26,12 @@ from app.services.clickup_hierarchy import (
     parent_phases_for_clickup,
 )
 from app.services.clickup_provision import provision_timeline_tasks
+from app.services.progress import (
+    BUCKET_DEFAULT_PROGRESS,
+    CLICKUP_PROGRESS_BUCKETS,
+    DEFAULT_STATUS_MAPPING_TEMPLATES,
+    normalize_progress_bucket,
+)
 
 router = APIRouter(prefix="/integrations/clickup", tags=["clickup"])
 
@@ -59,6 +65,93 @@ class MilestoneListMapItem(BaseModel):
 
 class MilestoneListMapBody(BaseModel):
     mappings: list[MilestoneListMapItem]
+
+
+class ClickUpStatusMappingItem(BaseModel):
+    status: str
+    bucket: str
+    progress_fallback: float | None = None
+
+
+class ClickUpStatusMappingBody(BaseModel):
+    mappings: list[ClickUpStatusMappingItem]
+
+
+def _integration_row(db: Session) -> IntegrationSettings:
+    row = db.scalar(select(IntegrationSettings).limit(1))
+    if not row:
+        row = IntegrationSettings(clickup_offer_on_kickoff=True)
+        db.add(row)
+        db.flush()
+    return row
+
+
+@router.get("/status-mappings")
+def get_status_mappings(
+    db: Session = Depends(get_db),
+    _: set[str] = Depends(PermissionChecker("integrations.clickup.configure")),
+):
+    row = _integration_row(db)
+    raw = row.clickup_status_mappings if isinstance(row.clickup_status_mappings, list) else []
+    mappings = []
+    for m in raw:
+        if not isinstance(m, dict) or not m.get("status"):
+            continue
+        bucket = normalize_progress_bucket(str(m.get("bucket") or "")) or str(m.get("bucket", ""))
+        pf = m.get("progress_fallback")
+        entry: dict[str, str | float] = {
+            "status": str(m.get("status", "")),
+            "bucket": bucket,
+        }
+        if pf is not None and pf != "":
+            entry["progress_fallback"] = float(pf)
+        elif bucket in BUCKET_DEFAULT_PROGRESS:
+            entry["progress_fallback"] = BUCKET_DEFAULT_PROGRESS[bucket]
+        mappings.append(entry)
+    return {
+        "mappings": mappings,
+        "buckets": list(CLICKUP_PROGRESS_BUCKETS),
+        "bucket_default_progress": BUCKET_DEFAULT_PROGRESS,
+        "default_templates": DEFAULT_STATUS_MAPPING_TEMPLATES,
+        "progress_rules": (
+            "Progress di timeline: (1) percent_complete / time tracking ClickUp jika ada; "
+            "(2) else progress_fallback dari mapping ini; (3) else default kode."
+        ),
+    }
+
+
+@router.put("/status-mappings")
+def put_status_mappings(
+    body: ClickUpStatusMappingBody,
+    db: Session = Depends(get_db),
+    _: set[str] = Depends(PermissionChecker("integrations.clickup.configure")),
+):
+    stored: list[dict[str, str | float]] = []
+    seen: set[str] = set()
+    for item in body.mappings:
+        label = item.status.strip()
+        bucket = normalize_progress_bucket(item.bucket)
+        if not label or not bucket:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Mapping tidak valid: status={item.status!r} bucket={item.bucket!r}",
+            )
+        from app.services.progress import _norm_clickup_status
+
+        key = _norm_clickup_status(label)
+        if key in seen:
+            continue
+        seen.add(key)
+        pf = item.progress_fallback
+        if pf is None:
+            pf = BUCKET_DEFAULT_PROGRESS[bucket]
+        else:
+            pf = max(0.0, min(100.0, float(pf)))
+        stored.append({"status": label, "bucket": bucket, "progress_fallback": pf})
+    row = _integration_row(db)
+    row.clickup_status_mappings = stored
+    db.commit()
+    return {"updated": len(stored), "mappings": stored}
 
 
 @router.get("")

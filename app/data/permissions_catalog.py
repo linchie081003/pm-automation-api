@@ -25,6 +25,12 @@ PERMISSIONS: list[tuple[str, str, str, str]] = [
     ("dashboard.executive", "Executive dashboard", "dashboard", "Portfolio executive view"),
     ("integrations.clickup.configure", "Configure ClickUp", "integrations", "Org ClickUp integration setup"),
     ("integrations.clickup.project", "Project ClickUp actions", "integrations", "Link/sync ClickUp per project"),
+    (
+        "integrations.google_drive.configure",
+        "Configure Google Drive",
+        "integrations",
+        "Org Google Drive service account for document sync",
+    ),
     ("health.config.write", "Edit RAG/SPI thresholds", "health", "Configure project health thresholds"),
     ("health.read", "View project health", "health", "View RAG/SPI metrics"),
     ("sph.read", "View SPH", "projects", "View SPH data"),

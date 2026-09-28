@@ -331,17 +331,167 @@ def _parent_date_span(
     ms_by_id: dict[int, Milestone],
     ms_by_clickup: dict[str, Milestone],
 ) -> tuple[date | None, date | None, dict | None]:
-    """Start/due for a parent ClickUp row, else from linked PDC milestone baseline."""
+    """Timeline milestone dates first, then ClickUp cache (for subtask inherit on sync)."""
+    m = ms_by_clickup.get(parent.clickup_task_id or "")
+    if not m and parent.milestone_id:
+        m = ms_by_id.get(parent.milestone_id)
+    if m and (m.start_date or m.target_date):
+        return m.start_date, m.target_date, None
     p_start = _cache_start_date(parent)
     p_due = parent.due_date
     praw = parent.raw_json if isinstance(parent.raw_json, dict) else {}
     if p_start or p_due:
         return p_start, p_due, praw
-    mid = parent.milestone_id
-    m = ms_by_id.get(mid) if mid else ms_by_clickup.get(parent.clickup_task_id or "")
-    if m and (m.start_date or m.target_date):
-        return m.start_date, m.target_date, None
     return None, None, None
+
+
+def _write_cache_timeline_dates(
+    cache: ClickUpTaskCache,
+    start: date | None,
+    end: date | None,
+) -> bool:
+    if not start and not end:
+        return False
+    raw = dict(cache.raw_json) if isinstance(cache.raw_json, dict) else {}
+    changed = False
+    if end and cache.due_date != end:
+        cache.due_date = end
+        raw["due_date"] = _date_to_clickup_raw(end)
+        changed = True
+    if start:
+        cur_start = _cache_start_date(cache)
+        if cur_start != start:
+            raw["start_date"] = _date_to_clickup_raw(start)
+            changed = True
+    if changed:
+        raw["pdc_timeline_dates"] = True
+        cache.raw_json = raw
+    return changed
+
+
+def _push_clickup_task_dates(
+    client: httpx.Client,
+    headers: dict[str, str],
+    task_id: str,
+    start: date | None,
+    end: date | None,
+) -> bool:
+    if not task_id or (not start and not end):
+        return False
+    body: dict[str, int] = {}
+    if end:
+        body["due_date"] = _date_to_clickup_raw(end)
+    if start:
+        body["start_date"] = _date_to_clickup_raw(start)
+    resp = client.put(
+        f"https://api.clickup.com/api/v2/task/{task_id}",
+        headers=headers,
+        json=body,
+    )
+    resp.raise_for_status()
+    return True
+
+
+def apply_timeline_dates_to_clickup(
+    db: Session,
+    project_id: int,
+    *,
+    client: httpx.Client,
+    headers: dict[str, str],
+) -> tuple[int, int]:
+    """
+    Push PDC timeline start/target to ClickUp task dates (cache + API).
+    Timeline is source of truth on progress sync.
+    """
+    from app.services.progress import (
+        _phase_id_for_cache,
+        build_clickup_lookups,
+        timeline_phases,
+    )
+
+    milestones = list(
+        db.scalars(select(Milestone).where(Milestone.project_id == project_id)).all()
+    )
+    caches = list(
+        db.scalars(
+            select(ClickUpTaskCache).where(ClickUpTaskCache.project_id == project_id)
+        ).all()
+    )
+    if not milestones or not caches:
+        return 0, 0
+
+    tasks_by_id, milestone_cache = build_clickup_lookups(milestones, caches)
+    by_tid = {c.clickup_task_id: c for c in caches if c.clickup_task_id}
+    by_id = {m.id: m for m in milestones}
+    ms_by_clickup = {m.clickup_task_id: m for m in milestones if m.clickup_task_id}
+    phases = timeline_phases(milestones)
+
+    def milestone_for_cache(cache: ClickUpTaskCache) -> Milestone | None:
+        m = ms_by_clickup.get(cache.clickup_task_id or "")
+        if m:
+            return m
+        for mid, linked in milestone_cache.items():
+            if linked.clickup_task_id == cache.clickup_task_id:
+                return by_id.get(mid)
+        return None
+
+    def timeline_span(cache: ClickUpTaskCache) -> tuple[date | None, date | None]:
+        m = milestone_for_cache(cache)
+        if m and (m.start_date or m.target_date):
+            return m.start_date, m.target_date
+        if cache.parent_task_id:
+            parent = by_tid.get(cache.parent_task_id)
+            if parent:
+                ps, pe = timeline_span(parent)
+                if ps or pe:
+                    return ps, pe
+        phase_id = _phase_id_for_cache(cache, phases, by_id, by_tid)
+        if phase_id:
+            ph = by_id.get(phase_id)
+            if ph and (ph.start_date or ph.target_date):
+                return ph.start_date, ph.target_date
+        return None, None
+
+    cache_updates = 0
+    api_updates = 0
+    seen: set[str] = set()
+
+    for m in milestones:
+        tid = m.clickup_task_id
+        if not tid or tid in seen:
+            continue
+        cache = tasks_by_id.get(tid)
+        if not cache:
+            continue
+        start, end = m.start_date, m.target_date
+        if not start and not end:
+            continue
+        seen.add(tid)
+        if _write_cache_timeline_dates(cache, start, end):
+            cache_updates += 1
+        try:
+            if _push_clickup_task_dates(client, headers, tid, start, end):
+                api_updates += 1
+        except httpx.HTTPError:
+            pass
+
+    for cache in caches:
+        tid = cache.clickup_task_id or ""
+        if not tid or tid in seen:
+            continue
+        start, end = timeline_span(cache)
+        if not start and not end:
+            continue
+        seen.add(tid)
+        if _write_cache_timeline_dates(cache, start, end):
+            cache_updates += 1
+        try:
+            if _push_clickup_task_dates(client, headers, tid, start, end):
+                api_updates += 1
+        except httpx.HTTPError:
+            pass
+
+    return cache_updates, api_updates
 
 
 def realign_cache_phase_ids(db: Session, project_id: int) -> int:
@@ -351,7 +501,9 @@ def realign_cache_phase_ids(db: Session, project_id: int) -> int:
     milestones = list(
         db.scalars(select(Milestone).where(Milestone.project_id == project_id)).all()
     )
-    phases = [m for m in milestones if m.item_type == TimelineItemType.phase]
+    from app.services.progress import timeline_phases
+
+    phases = timeline_phases(milestones)
     by_id = {m.id: m for m in milestones}
     caches = list(
         db.scalars(
@@ -630,6 +782,8 @@ def _fetch_task_or_dead(
 
 
 def sync_project_tasks(db: Session, project: Project) -> dict:
+    from app.services.progress import clickup_status_mapping_context
+
     if not project.clickup_enabled:
         raise ClickUpSyncError(
             "ClickUp belum diaktifkan. Centang «Aktifkan ClickUp» lalu Simpan."
@@ -641,13 +795,12 @@ def sync_project_tasks(db: Session, project: Project) -> dict:
     all_ms_for_map = list(
         db.scalars(select(Milestone).where(Milestone.project_id == project.id)).all()
     )
+    from app.services.progress import timeline_phases
+
     ms_by_list: dict[str, int] = {}
-    for m in all_ms_for_map:
-        if m.item_type == TimelineItemType.phase and m.clickup_list_id:
-            ms_by_list[m.clickup_list_id] = m.id
-    for m in all_ms_for_map:
-        lid = m.clickup_list_id
-        if lid and lid not in ms_by_list:
+    for m in timeline_phases(all_ms_for_map):
+        lid = (m.clickup_list_id or "").strip()
+        if lid:
             ms_by_list[lid] = m.id
     container_ids = {
         m.clickup_task_id
@@ -676,101 +829,112 @@ def sync_project_tasks(db: Session, project: Project) -> dict:
     removed_cache = 0
     unlinked_milestones = 0
     headers = _headers(row)
-    try:
-        with httpx.Client(timeout=90.0) as client:
-            seen_clickup_ids: set[str] = set()
-            dead_ids: set[str] = set()
-            for lid in list_ids:
-                mid = ms_by_list.get(lid)
-                n, seen = _sync_list_tasks(db, project, row, lid, mid, client)
-                count += n
-                seen_clickup_ids |= seen
-            all_ms = list(
-                db.scalars(select(Milestone).where(Milestone.project_id == project.id)).all()
+    with clickup_status_mapping_context(db):
+        try:
+            with httpx.Client(timeout=90.0) as client:
+                seen_clickup_ids: set[str] = set()
+                dead_ids: set[str] = set()
+                for lid in list_ids:
+                    mid = ms_by_list.get(lid)
+                    n, seen = _sync_list_tasks(db, project, row, lid, mid, client)
+                    count += n
+                    seen_clickup_ids |= seen
+                all_ms = list(
+                    db.scalars(select(Milestone).where(Milestone.project_id == project.id)).all()
+                )
+                for cid in container_ids:
+                    if not cid:
+                        continue
+                    t, is_dead = _fetch_task_or_dead(client, headers, cid)
+                    if is_dead:
+                        dead_ids.add(cid)
+                        continue
+                    if t:
+                        tid = str(t.get("id", cid))
+                        seen_clickup_ids.add(tid)
+                        owner = next((m for m in all_ms if m.clickup_task_id == cid), None)
+                        _upsert_task_cache(
+                            db,
+                            project,
+                            t,
+                            list_id=owner.clickup_list_id if owner else None,
+                            milestone_id=owner.id if owner else None,
+                        )
+
+                caches = list(
+                    db.scalars(
+                        select(ClickUpTaskCache).where(ClickUpTaskCache.project_id == project.id)
+                    ).all()
+                )
+                for cache in caches:
+                    tid = cache.clickup_task_id
+                    if not tid or tid in seen_clickup_ids:
+                        continue
+                    if tid in dead_ids:
+                        db.delete(cache)
+                        removed_cache += 1
+                        continue
+                    t, is_dead = _fetch_task_or_dead(client, headers, tid)
+                    if is_dead:
+                        db.delete(cache)
+                        removed_cache += 1
+                    elif t:
+                        seen_clickup_ids.add(tid)
+                        _upsert_task_cache(db, project, t, list_id=cache.clickup_list_id)
+
+                for m in all_ms:
+                    cid = m.clickup_task_id
+                    if not cid or cid in seen_clickup_ids:
+                        continue
+                    if cid in dead_ids:
+                        m.clickup_task_id = None
+                        unlinked_milestones += 1
+                        continue
+                    _, is_dead = _fetch_task_or_dead(client, headers, cid)
+                    if is_dead:
+                        m.clickup_task_id = None
+                        unlinked_milestones += 1
+        except httpx.HTTPStatusError as e:
+            body = e.response.text[:300] if e.response is not None else str(e)
+            code = e.response.status_code if e.response is not None else "?"
+            raise ClickUpSyncError(f"ClickUp API ({code}): {body}") from e
+        except httpx.HTTPError as e:
+            raise ClickUpSyncError(f"Gagal hubung ke ClickUp: {e}") from e
+
+        from app.services.progress import relink_milestone_clickup_ids
+
+        all_ms = list(
+            db.scalars(select(Milestone).where(Milestone.project_id == project.id)).all()
+        )
+        realigned_phases = realign_cache_phase_ids(db, project.id)
+        relinked = relink_milestone_clickup_ids(db, project.id)
+        all_ms = list(
+            db.scalars(select(Milestone).where(Milestone.project_id == project.id)).all()
+        )
+        clickup_dates_from_timeline = 0
+        clickup_api_date_updates = 0
+        with httpx.Client(timeout=90.0) as date_client:
+            clickup_dates_from_timeline, clickup_api_date_updates = apply_timeline_dates_to_clickup(
+                db,
+                project.id,
+                client=date_client,
+                headers=headers,
             )
-            for cid in container_ids:
-                if not cid:
-                    continue
-                t, is_dead = _fetch_task_or_dead(client, headers, cid)
-                if is_dead:
-                    dead_ids.add(cid)
-                    continue
-                if t:
-                    tid = str(t.get("id", cid))
-                    seen_clickup_ids.add(tid)
-                    owner = next((m for m in all_ms if m.clickup_task_id == cid), None)
-                    _upsert_task_cache(
-                        db,
-                        project,
-                        t,
-                        list_id=owner.clickup_list_id if owner else None,
-                        milestone_id=owner.id if owner else None,
-                    )
+        inherited_dates = inherit_empty_task_dates_from_parent(db, project.id, all_ms)
 
-            caches = list(
-                db.scalars(
-                    select(ClickUpTaskCache).where(ClickUpTaskCache.project_id == project.id)
-                ).all()
-            )
-            for cache in caches:
-                tid = cache.clickup_task_id
-                if not tid or tid in seen_clickup_ids:
-                    continue
-                if tid in dead_ids:
-                    db.delete(cache)
-                    removed_cache += 1
-                    continue
-                t, is_dead = _fetch_task_or_dead(client, headers, tid)
-                if is_dead:
-                    db.delete(cache)
-                    removed_cache += 1
-                elif t:
-                    seen_clickup_ids.add(tid)
-                    _upsert_task_cache(db, project, t, list_id=cache.clickup_list_id)
-
-            for m in all_ms:
-                cid = m.clickup_task_id
-                if not cid or cid in seen_clickup_ids:
-                    continue
-                if cid in dead_ids:
-                    m.clickup_task_id = None
-                    unlinked_milestones += 1
-                    continue
-                _, is_dead = _fetch_task_or_dead(client, headers, cid)
-                if is_dead:
-                    m.clickup_task_id = None
-                    unlinked_milestones += 1
-    except httpx.HTTPStatusError as e:
-        body = e.response.text[:300] if e.response is not None else str(e)
-        code = e.response.status_code if e.response is not None else "?"
-        raise ClickUpSyncError(f"ClickUp API ({code}): {body}") from e
-    except httpx.HTTPError as e:
-        raise ClickUpSyncError(f"Gagal hubung ke ClickUp: {e}") from e
-
-    from app.services.progress import relink_milestone_clickup_ids
-
-    all_ms = list(
-        db.scalars(select(Milestone).where(Milestone.project_id == project.id)).all()
-    )
-    inherited_dates = inherit_empty_task_dates_from_parent(db, project.id, all_ms)
-    realigned_phases = realign_cache_phase_ids(db, project.id)
-    relinked = relink_milestone_clickup_ids(db, project.id)
-    all_ms = list(
-        db.scalars(select(Milestone).where(Milestone.project_id == project.id)).all()
-    )
-    timeline_dates_updated = apply_clickup_dates_to_timeline(db, project.id)
-
-    project.clickup_synced_at = datetime.utcnow()
-    db.flush()
-    return {
-        "synced": count,
-        "removed_cache": removed_cache,
-        "unlinked_milestones": unlinked_milestones,
-        "relinked_milestones": relinked,
-        "inherited_dates": inherited_dates,
-        "realigned_phases": realigned_phases,
-        "timeline_dates_updated": timeline_dates_updated,
-    }
+        project.clickup_synced_at = datetime.utcnow()
+        db.flush()
+        return {
+            "synced": count,
+            "removed_cache": removed_cache,
+            "unlinked_milestones": unlinked_milestones,
+            "relinked_milestones": relinked,
+            "inherited_dates": inherited_dates,
+            "realigned_phases": realigned_phases,
+            "clickup_dates_from_timeline": clickup_dates_from_timeline,
+            "clickup_api_date_updates": clickup_api_date_updates,
+            "timeline_dates_updated": 0,
+        }
 
 
 def _phase_for_milestone(

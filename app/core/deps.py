@@ -1,7 +1,9 @@
 from typing import Annotated, Callable
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Cookie, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+from app.core.auth_cookies import ACCESS_COOKIE
 from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -20,14 +22,27 @@ from app.services.authorization import (
 security = HTTPBearer(auto_error=False)
 
 
+def _resolve_access_token(
+    creds: HTTPAuthorizationCredentials | None,
+    access_cookie: str | None,
+) -> str | None:
+    if creds and creds.credentials:
+        return creds.credentials
+    if access_cookie:
+        return access_cookie
+    return None
+
+
 def get_current_user_optional(
     creds: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
+    access_cookie: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
     db: Session = Depends(get_db),
 ) -> User | None:
-    if not creds:
+    token = _resolve_access_token(creds, access_cookie)
+    if not token:
         return None
     try:
-        payload = decode_token(creds.credentials)
+        payload = decode_token(token)
         if payload.get("type") != "access":
             return None
         user_id = int(payload["sub"])
@@ -47,6 +62,26 @@ def get_current_user(
     user: Annotated[User | None, Depends(get_current_user_optional)],
 ) -> User:
     if not user:
+        # #region agent log
+        try:
+            import json
+            import time
+            from pathlib import Path
+
+            log_path = Path(__file__).resolve().parents[3] / "debug-aa7388.log"
+            payload = {
+                "sessionId": "aa7388",
+                "timestamp": int(time.time() * 1000),
+                "location": "deps.py:get_current_user",
+                "message": "auth_missing",
+                "data": {},
+                "hypothesisId": "A",
+            }
+            with open(log_path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(payload) + "\n")
+        except OSError:
+            pass
+        # #endregion
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",

@@ -15,10 +15,12 @@ from app.core.project_access import ensure_permission, ensure_project_read, ensu
 from app.database import get_db
 from app.models import Document, DocumentType, Project, ProjectPhase, User
 from app.services.activity import log_activity
+from app.services.google_drive import parse_drive_folder_id, upload_bytes_to_folder
 
 router = APIRouter(tags=["documents"])
 
 ALLOWED_EXT = {".pdf", ".docx", ".xlsx", ".pptx", ".png", ".jpg", ".jpeg"}
+
 PREVIEW_INLINE_EXT = {".pdf", ".png", ".jpg", ".jpeg"}
 
 
@@ -80,16 +82,38 @@ async def upload_document(
     content = await file.read()
     dest.write_bytes(content)
 
+    project = db.get(Project, project_id)
+    gdrive_url: str | None = None
+    gdrive_error: str | None = None
+    folder_id = parse_drive_folder_id(project.document_repo_url if project else None)
+    if folder_id:
+        try:
+            gdrive_url = upload_bytes_to_folder(
+                folder_id,
+                file.filename or safe,
+                content,
+                db=db,
+            )
+        except Exception as exc:
+            gdrive_error = str(exc)
+
     doc = Document(
         project_id=project_id,
         phase=ph,
         doc_type=dtype,
         filename=file.filename or safe,
         storage_path=str(rel).replace("\\", "/"),
+        external_url=gdrive_url,
         uploaded_by_id=user.id,
     )
     db.add(doc)
-    log_activity(db, project_id, user.id, "document.uploaded", {"type": doc_type})
+    log_activity(
+        db,
+        project_id,
+        user.id,
+        "document.uploaded",
+        {"type": doc_type, "gdrive": bool(gdrive_url)},
+    )
     try:
         db.commit()
     except IntegrityError as exc:
@@ -125,7 +149,12 @@ async def upload_document(
             status_code=500,
             detail=f"Gagal menyimpan dokumen: {exc.__class__.__name__}",
         ) from exc
-    return {"id": doc.id, "filename": doc.filename}
+    out: dict = {"id": doc.id, "filename": doc.filename}
+    if gdrive_url:
+        out["gdrive_url"] = gdrive_url
+    if gdrive_error:
+        out["gdrive_error"] = gdrive_error
+    return out
 
 
 def _document_file_response(doc: Document, inline: bool) -> FileResponse:

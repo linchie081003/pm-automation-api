@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import time
 from datetime import date
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
@@ -16,6 +19,7 @@ from app.services.progress import (
     phase_workflow_status,
     row_clickup_progress_pct,
     task_cache_progress_pct,
+    timeline_phases,
 )
 
 
@@ -54,6 +58,9 @@ def resolve_clickup_baseline_dates(
             inherited = _span_from_bounds(ps, pe)
             if inherited[0] and inherited[1]:
                 return inherited
+    linked = ms_by_clickup.get(cache.clickup_task_id or "")
+    if linked and (linked.start_date or linked.target_date):
+        return _span_from_bounds(linked.start_date, linked.target_date)
     own = _span_from_bounds(*_cache_date_span(cache))
     if own[0] and own[1]:
         return own
@@ -186,10 +193,8 @@ def merge_timeline_with_clickup(
     ms_by_clickup = {m.clickup_task_id: m for m in milestones if m.clickup_task_id}
     pdc_ids = {r["id"] for r in pdc_rows if isinstance(r.get("id"), int) and r["id"] > 0}
 
-    phases = sorted(
-        [m for m in milestones if m.item_type == TimelineItemType.phase],
-        key=lambda p: (p.sort_order, p.id),
-    )
+    phases = timeline_phases(milestones)
+    _debug_log = Path(__file__).resolve().parents[3] / "debug-aa7388.log"
     row_by_id = {r["id"]: r for r in pdc_rows}
 
     def pdc_row(mid: int) -> dict | None:
@@ -263,18 +268,6 @@ def merge_timeline_with_clickup(
                     "clickup_progress_pct": phase_pct,
                     "clickup_status": phase_status,
                 }
-            )
-
-        cu_roots = _clickup_roots_for_phase(phase, milestones, caches, linked_cu)
-        for i, root in enumerate(cu_roots):
-            append_clickup_tree(
-                root,
-                phase=phase,
-                phase_status=phase_status,
-                depth=1,
-                parent_clickup=None,
-                parent_pdc_id=phase.id,
-                base_sort=phase.sort_order + 100 + i,
             )
 
         descendants = _phase_descendants(phase.id, milestones)
@@ -365,6 +358,39 @@ def merge_timeline_with_clickup(
                         parent_pdc_id=m.id,
                         base_sort=m.sort_order + 500 + i,
                     )
+
+        cu_roots = _clickup_roots_for_phase(phase, milestones, caches, linked_cu)
+        # #region agent log
+        try:
+            payload = {
+                "sessionId": "aa7388",
+                "timestamp": int(time.time() * 1000),
+                "location": "timeline_display.py",
+                "message": "phase_clickup_roots",
+                "data": {
+                    "phase_id": phase.id,
+                    "phase_name": phase.name,
+                    "clickup_list_id": phase.clickup_list_id,
+                    "root_count": len(cu_roots),
+                    "root_names": [r.name for r in cu_roots[:8]],
+                },
+                "hypothesisId": "E",
+            }
+            with open(_debug_log, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(payload) + "\n")
+        except OSError:
+            pass
+        # #endregion
+        for i, root in enumerate(cu_roots):
+            append_clickup_tree(
+                root,
+                phase=phase,
+                phase_status=phase_status,
+                depth=1,
+                parent_clickup=None,
+                parent_pdc_id=phase.id,
+                base_sort=phase.sort_order + 900 + i,
+            )
 
     # Phases / rows not walked (safety)
     for r in pdc_rows:

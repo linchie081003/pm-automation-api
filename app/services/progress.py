@@ -1,9 +1,126 @@
+import re
+from contextlib import contextmanager
+from contextvars import ContextVar, Token
+from dataclasses import dataclass
 from datetime import date
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import ClickUpTaskCache, Milestone, MilestoneStatus, Project, TimelineItemType
+from app.models import ClickUpTaskCache, IntegrationSettings, Milestone, MilestoneStatus, Project, TimelineItemType
+
+CLICKUP_PROGRESS_BUCKETS = ("TODO", "IN PROGRESS", "DONE")
+
+BUCKET_DEFAULT_PROGRESS: dict[str, float] = {
+    "TODO": 0.0,
+    "IN PROGRESS": 50.0,
+    "DONE": 100.0,
+}
+
+DEFAULT_STATUS_MAPPING_TEMPLATES: list[dict[str, str | float]] = [
+    {"status": "to do", "bucket": "TODO", "progress_fallback": 0},
+    {"status": "open", "bucket": "TODO", "progress_fallback": 0},
+    {"status": "in progress", "bucket": "IN PROGRESS", "progress_fallback": 50},
+    {"status": "re-open", "bucket": "IN PROGRESS", "progress_fallback": 50},
+    {"status": "ready to test", "bucket": "IN PROGRESS", "progress_fallback": 50},
+    {"status": "internal review", "bucket": "IN PROGRESS", "progress_fallback": 50},
+    {"status": "ready to deploy", "bucket": "DONE", "progress_fallback": 100},
+    {"status": "complete", "bucket": "DONE", "progress_fallback": 100},
+    {"status": "closed", "bucket": "DONE", "progress_fallback": 100},
+]
+
+
+@dataclass(frozen=True)
+class StatusMappingContext:
+    buckets: dict[str, str]
+    progress_fallback: dict[str, float]
+
+
+_clickup_mapping_ctx: ContextVar[StatusMappingContext | None] = ContextVar(
+    "clickup_mapping_ctx",
+    default=None,
+)
+
+
+def set_clickup_status_mapping_context(ctx: StatusMappingContext | None) -> Token:
+    return _clickup_mapping_ctx.set(ctx)
+
+
+def reset_clickup_status_mapping_context(token: Token) -> None:
+    _clickup_mapping_ctx.reset(token)
+
+
+def normalize_progress_bucket(raw: str) -> str | None:
+    b = (raw or "").strip().upper().replace("_", " ")
+    if b in ("INPROGRESS", "IN PROGRESS"):
+        return "IN PROGRESS"
+    if b in CLICKUP_PROGRESS_BUCKETS:
+        return b
+    return None
+
+
+def parse_status_mapping_rows(rows: list | None) -> StatusMappingContext:
+    buckets: dict[str, str] = {}
+    progress: dict[str, float] = {}
+    if not rows:
+        return StatusMappingContext(buckets=buckets, progress_fallback=progress)
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("status") or item.get("status_label") or "").strip()
+        bucket = normalize_progress_bucket(str(item.get("bucket") or ""))
+        if not label or not bucket:
+            continue
+        key = _norm_clickup_status(label)
+        if not key:
+            continue
+        buckets[key] = bucket
+        raw_pf = item.get("progress_fallback")
+        if raw_pf is not None and raw_pf != "":
+            try:
+                progress[key] = max(0.0, min(100.0, float(raw_pf)))
+            except (TypeError, ValueError):
+                progress[key] = BUCKET_DEFAULT_PROGRESS[bucket]
+        else:
+            progress[key] = BUCKET_DEFAULT_PROGRESS[bucket]
+    return StatusMappingContext(buckets=buckets, progress_fallback=progress)
+
+
+def get_clickup_status_mappings_from_db(db: Session) -> StatusMappingContext:
+    row = db.scalar(select(IntegrationSettings).limit(1))
+    if not row or not row.clickup_status_mappings:
+        return StatusMappingContext(buckets={}, progress_fallback={})
+    raw = row.clickup_status_mappings
+    return parse_status_mapping_rows(raw if isinstance(raw, list) else [])
+
+
+@contextmanager
+def clickup_status_mapping_context(db: Session):
+    """Apply org ClickUp status → PDC status + progress fallback mappings."""
+    ctx = get_clickup_status_mappings_from_db(db)
+    active = ctx if ctx.buckets else None
+    token = set_clickup_status_mapping_context(active)
+    try:
+        yield ctx
+    finally:
+        reset_clickup_status_mapping_context(token)
+
+
+def timeline_phases(milestones: list[Milestone]) -> list[Milestone]:
+    """Top-level timeline phases (same rules as ClickUp list mapping UI)."""
+    phases = [
+        m
+        for m in milestones
+        if m.parent_id is None and m.item_type == TimelineItemType.phase
+    ]
+    if not phases:
+        phases = [
+            m
+            for m in milestones
+            if m.parent_id is None
+            and m.item_type in (TimelineItemType.milestone, TimelineItemType.phase)
+        ]
+    return sorted(phases, key=lambda p: (p.sort_order, p.id))
 
 
 def normalize_timeline_match_name(name: str) -> str:
@@ -85,7 +202,8 @@ def _cache_for_milestone(
 
 
 def _norm_clickup_status(status: str | None) -> str:
-    return (status or "").strip().lower().replace("_", " ")
+    s = (status or "").strip().lower().replace("_", " ").replace("-", " ")
+    return re.sub(r"\s+", " ", s).strip()
 
 
 # ClickUp custom statuses → PDC workflow buckets (TODO / IN PROGRESS / DONE)
@@ -135,6 +253,9 @@ _CLICKUP_STATUS_TODO = frozenset(
 def classify_clickup_status(status: str | None) -> str:
     """Map raw ClickUp status to TODO | IN PROGRESS | DONE."""
     st = _norm_clickup_status(status)
+    ctx = _clickup_mapping_ctx.get()
+    if ctx and st in ctx.buckets:
+        return ctx.buckets[st]
     if st in _CLICKUP_STATUS_DONE:
         return "DONE"
     if st in _CLICKUP_STATUS_IN_PROGRESS:
@@ -183,9 +304,15 @@ def _task_completion(
                 return min(100.0, p)
         except (TypeError, ValueError):
             pass
+    st = _norm_clickup_status(task.status)
+    ctx = _clickup_mapping_ctx.get()
+    if ctx and st in ctx.progress_fallback:
+        return float(ctx.progress_fallback[st])
+    if _cache_is_done(task):
+        return 100.0
     if _status_implies_in_progress(task.status):
-        return 50.0
-    return 0.0
+        return BUCKET_DEFAULT_PROGRESS["IN PROGRESS"]
+    return BUCKET_DEFAULT_PROGRESS["TODO"]
 
 
 def task_cache_progress_pct(
@@ -264,6 +391,17 @@ def _list_name_from_clickup_cache(cache: ClickUpTaskCache) -> str:
     return ""
 
 
+def _list_id_from_clickup_cache(cache: ClickUpTaskCache) -> str:
+    lid = (cache.clickup_list_id or "").strip()
+    if lid:
+        return lid
+    raw = cache.raw_json if isinstance(cache.raw_json, dict) else {}
+    lst = raw.get("list")
+    if isinstance(lst, dict):
+        return str(lst.get("id") or "").strip()
+    return ""
+
+
 def _phase_id_for_cache(
     cache: ClickUpTaskCache,
     phases: list[Milestone],
@@ -271,6 +409,7 @@ def _phase_id_for_cache(
     caches_by_tid: dict[str, ClickUpTaskCache] | None = None,
 ) -> int | None:
     by_tid = caches_by_tid or {}
+    phase_ids = {p.id for p in phases}
 
     if cache.parent_task_id:
         parent = by_tid.get(cache.parent_task_id)
@@ -279,17 +418,12 @@ def _phase_id_for_cache(
             if inherited is not None:
                 return inherited
 
-    if cache.milestone_id and cache.milestone_id in by_id:
-        cur: Milestone | None = by_id[cache.milestone_id]
-        while cur:
-            if cur.item_type == TimelineItemType.phase:
-                return cur.id
-            cur = by_id.get(cur.parent_id) if cur.parent_id else None
-
-    lid = cache.clickup_list_id or ""
-    list_matches = [p for p in phases if lid and (p.clickup_list_id or "") == lid]
-    if len(list_matches) == 1:
-        return list_matches[0].id
+    # User mapping: phase.clickup_list_id ↔ ClickUp list (highest priority after subtask parent)
+    lid = _list_id_from_clickup_cache(cache)
+    if lid:
+        list_matches = [p for p in phases if (p.clickup_list_id or "").strip() == lid]
+        if len(list_matches) == 1:
+            return list_matches[0].id
 
     list_label = _normalize_phase_list_name(_list_name_from_clickup_cache(cache))
     if list_label:
@@ -301,6 +435,13 @@ def _phase_id_for_cache(
             if pn and (list_label.startswith(pn) or pn.startswith(list_label)):
                 return p.id
 
+    if cache.milestone_id and cache.milestone_id in by_id:
+        cur: Milestone | None = by_id[cache.milestone_id]
+        while cur:
+            if cur.id in phase_ids:
+                return cur.id
+            cur = by_id.get(cur.parent_id) if cur.parent_id else None
+
     return None
 
 
@@ -310,7 +451,7 @@ def _clickup_roots_for_phase(
     caches: list[ClickUpTaskCache],
     linked_clickup_ids: set[str],
 ) -> list[ClickUpTaskCache]:
-    phases = [m for m in milestones if m.item_type == TimelineItemType.phase]
+    phases = timeline_phases(milestones)
     by_id = {m.id: m for m in milestones}
     by_tid = {c.clickup_task_id: c for c in caches if c.clickup_task_id}
     all_ids = set(by_tid.keys())
@@ -440,11 +581,14 @@ def _task_branch_clickup_pct(
     ]
     if subtasks:
         sw = sum(s.weight_pct for s in subtasks) or 0.0
-        if sw <= 0:
+        pcts = [_row_clickup_pct(s, tasks_by_id, milestone_cache) for s in subtasks]
+        if not pcts:
             return _row_clickup_pct(task, tasks_by_id, milestone_cache)
-        return sum(
-            _row_clickup_pct(s, tasks_by_id, milestone_cache) * (s.weight_pct / sw)
-            for s in subtasks
+        if sw <= 0:
+            return round(sum(pcts) / len(pcts), 2)
+        return round(
+            sum(p * (s.weight_pct / sw) for s, p in zip(subtasks, pcts, strict=True)),
+            2,
         )
     mc = milestone_cache or {}
     cache = _cache_for_milestone(task, tasks_by_id, mc)
@@ -569,7 +713,9 @@ def enrich_milestone_clickup_fields(
         "clickup_status": display_status,
         "clickup_status_raw": status_raw,
         "clickup_url": cache.url if cache else None,
-        "clickup_due_date": cu_end.isoformat() if cu_end else None,
+        "clickup_due_date": (
+            (m.target_date or cu_end).isoformat() if (m.target_date or cu_end) else None
+        ),
         "clickup_progress_pct": progress,
         "display_start": display_start.isoformat() if display_start else None,
         "display_end": display_end.isoformat() if display_end else None,

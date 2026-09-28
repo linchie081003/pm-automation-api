@@ -18,7 +18,11 @@ from app.models import (
     TimelineItemType,
     User,
 )
-from app.services.progress import build_clickup_lookups, enrich_milestone_clickup_fields
+from app.services.progress import (
+    build_clickup_lookups,
+    clickup_status_mapping_context,
+    enrich_milestone_clickup_fields,
+)
 from app.services.timeline_display import merge_timeline_with_clickup
 from app.services.project_lifecycle import (
     kickoff_milestones_editable,
@@ -72,6 +76,9 @@ class MilestoneOut(BaseModel):
     parent_clickup_task_id: str | None = None
     depth: int = 0
     expandable: bool = False
+    timeline_seq: int | None = None
+    phase_status: str | None = None
+    timeline_dates_inherited: bool | None = None
 
     model_config = {"from_attributes": True}
 
@@ -123,17 +130,18 @@ def list_milestones(
         ).all()
     )
     ms_list = list(ms)
-    tasks_by_id, milestone_cache = build_clickup_lookups(ms_list, caches)
-    pdc_rows: list[dict] = []
-    for m in ms_list:
-        base = MilestoneOut.model_validate(m).model_dump()
-        base.update(
-            enrich_milestone_clickup_fields(
-                m, ms_list, tasks_by_id, milestone_cache, caches=caches, db=db
+    with clickup_status_mapping_context(db):
+        tasks_by_id, milestone_cache = build_clickup_lookups(ms_list, caches)
+        pdc_rows: list[dict] = []
+        for m in ms_list:
+            base = MilestoneOut.model_validate(m).model_dump()
+            base.update(
+                enrich_milestone_clickup_fields(
+                    m, ms_list, tasks_by_id, milestone_cache, caches=caches, db=db
+                )
             )
-        )
-        pdc_rows.append(base)
-    merged = merge_timeline_with_clickup(pdc_rows, ms_list, caches, db=db)
+            pdc_rows.append(base)
+        merged = merge_timeline_with_clickup(pdc_rows, ms_list, caches, db=db)
     return [MilestoneOut(**row) for row in merged]
 
 

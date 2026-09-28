@@ -367,6 +367,10 @@ class IntegrationSettings(Base):
     )
     clickup_offer_on_kickoff: Mapped[bool] = mapped_column(Boolean, default=True)
     clickup_configured_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    google_drive_service_account_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    google_drive_service_account_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    google_drive_configured_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    clickup_status_mappings: Mapped[list] = mapped_column(JSONB, default=list)
     holiday_dates: Mapped[list] = mapped_column(JSONB, default=list)
     work_weekdays: Mapped[list] = mapped_column(JSONB, default=lambda: [0, 1, 2, 3, 4])
 
