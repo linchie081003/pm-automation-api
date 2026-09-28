@@ -153,34 +153,6 @@ def _ensure_list_in_folder(
         if "name taken" in err or ecode == "SUBCAT_016":
             lists_by_name.update(_fetch_folder_lists_map(client, headers, folder_id))
             if key and key in lists_by_name:
-                # #region agent log
-                try:
-                    import json
-                    import time
-                    from pathlib import Path
-
-                    _log_path = Path(__file__).resolve().parents[2].parent / "debug-aa7388.log"
-                    with _log_path.open("a", encoding="utf-8") as _f:
-                        _f.write(
-                            json.dumps(
-                                {
-                                    "sessionId": "aa7388",
-                                    "hypothesisId": "H-clickup-list-reuse",
-                                    "location": "clickup_hierarchy.py:_ensure_list_in_folder",
-                                    "message": "reused existing list (name taken)",
-                                    "data": {
-                                        "folder_id": folder_id,
-                                        "list_name": display,
-                                        "list_id": lists_by_name[key],
-                                    },
-                                    "timestamp": int(time.time() * 1000),
-                                }
-                            )
-                            + "\n"
-                        )
-                except OSError:
-                    pass
-                # #endregion
                 return lists_by_name[key], False
             raise ClickUpSyncError(
                 f"Nama list «{display}» sudah dipakai di folder ClickUp lain — rename phase timeline."

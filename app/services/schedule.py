@@ -324,37 +324,6 @@ def promote_draft_baseline(db: Session, project_id: int, effective_from: date, u
     db.add(promoted)
     db.flush()
     _copy_baseline_milestone_rows(db, draft.id, promoted.id)
-    # #region agent log
-    try:
-        import json
-        from pathlib import Path
-
-        root = Path(__file__).resolve().parents[3]
-        payload = (
-            json.dumps(
-                {
-                    "sessionId": "aa7388",
-                    "hypothesisId": "H4-draft-persist",
-                    "location": "schedule.py:promote_draft_baseline",
-                    "message": "promoted copy; SPH draft kept",
-                    "data": {
-                        "project_id": project_id,
-                        "draft_id": draft.id,
-                        "draft_is_draft": draft.is_draft,
-                        "promoted_id": promoted.id,
-                    },
-                    "timestamp": int(__import__("time").time() * 1000),
-                }
-            )
-            + "\n"
-        )
-        for log_path in (root / "debug-aa7388.log", root / ".cursor" / "debug-aa7388.log"):
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-            with log_path.open("a", encoding="utf-8") as f:
-                f.write(payload)
-    except OSError:
-        pass
-    # #endregion
     return promoted
 
 
@@ -620,17 +589,6 @@ def seed_planned_weekly_targets(db: Session, project_id: int) -> dict:
                 "planned_cumulative_pct": planned,
             }
         )
-    _debug_scurve_log(
-        "seed_planned_weekly_targets",
-        {
-            "project_id": project_id,
-            "project_end": project_end.isoformat(),
-            "count": len(out),
-            "first": out[0] if out else None,
-            "last": out[-1] if out else None,
-        },
-        "H2-generate-series",
-    )
     return {
         "anchors": out,
         "count": len(out),
@@ -641,36 +599,6 @@ def seed_planned_weekly_targets(db: Session, project_id: int) -> dict:
         "schedule_end": project_end.isoformat(),
         "bounds_source": end_source,
     }
-
-
-def _debug_scurve_log(message: str, data: dict, hypothesis_id: str) -> None:
-    # #region agent log
-    try:
-        import json
-        import time
-        from pathlib import Path
-
-        root = Path(__file__).resolve().parents[3]
-        payload = (
-            json.dumps(
-                {
-                    "sessionId": "aa7388",
-                    "hypothesisId": hypothesis_id,
-                    "location": "schedule.py:scurve",
-                    "message": message,
-                    "data": data,
-                    "timestamp": int(time.time() * 1000),
-                }
-            )
-            + "\n"
-        )
-        for log_path in (root / "debug-aa7388.log", root / ".cursor" / "debug-aa7388.log"):
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-            with log_path.open("a", encoding="utf-8") as f:
-                f.write(payload)
-    except OSError:
-        pass
-    # #endregion
 
 
 def scurve_points(
@@ -703,8 +631,6 @@ def scurve_points(
     target_by_anchor = {r["anchor_date"]: r for r in target_rows}
     range_start = date_from if date_from is not None else anchors[0]
     range_end = date_to if date_to is not None else anchors[-1]
-    skipped_after_end: list[str] = []
-
     snapshots = db.scalars(
         select(ProgressSnapshot)
         .where(ProgressSnapshot.project_id == project_id)
@@ -716,8 +642,6 @@ def scurve_points(
     points: list[dict] = []
     for anchor in anchors:
         if anchor < range_start or anchor > range_end:
-            if anchor > range_end:
-                skipped_after_end.append(anchor.isoformat())
             continue
         row = target_by_anchor.get(anchor.isoformat())
         if not row:
@@ -759,23 +683,6 @@ def scurve_points(
             }
         )
 
-    _debug_scurve_log(
-        "scurve_points built",
-        {
-            "project_id": project_id,
-            "project_end": project_end.isoformat() if project_end else None,
-            "date_from": date_from.isoformat() if date_from else None,
-            "date_to": date_to.isoformat() if date_to else None,
-            "range_start": range_start.isoformat(),
-            "range_end": range_end.isoformat(),
-            "anchor_count": len(anchors),
-            "point_count": len(points),
-            "skipped_after_range_end": skipped_after_end,
-            "last_anchor": anchors[-1].isoformat() if anchors else None,
-            "last_planned": points[-1]["planned_pct"] if points else None,
-        },
-        "H1-anchor-filter",
-    )
     return points
 
 

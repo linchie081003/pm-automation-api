@@ -113,40 +113,6 @@ def create_template(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid methodology") from exc
     item_dicts = [i.model_dump() for i in body.items]
-    # #region agent log
-    try:
-        import json
-        import time
-        from pathlib import Path
-
-        roots = [d for d in item_dicts if not d.get("parent_key")]
-        log_path = Path(__file__).resolve().parents[3] / "debug-aa7388.log"
-        with log_path.open("a", encoding="utf-8") as f:
-            f.write(
-                json.dumps(
-                    {
-                        "sessionId": "aa7388",
-                        "hypothesisId": "H1-root-milestone",
-                        "location": "timeline_templates.py:create_template",
-                        "message": "template save attempt",
-                        "data": {
-                            "root_rows": [
-                                {
-                                    "name": r.get("name"),
-                                    "item_type": r.get("item_type"),
-                                    "parent_key": r.get("parent_key"),
-                                }
-                                for r in roots
-                            ],
-                        },
-                        "timestamp": int(time.time() * 1000),
-                    }
-                )
-                + "\n"
-            )
-    except OSError:
-        pass
-    # #endregion
     try:
         validate_timeline_items(item_dicts)
     except ValueError as exc:

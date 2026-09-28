@@ -358,26 +358,12 @@ def generate_draft(
         raise HTTPException(status_code=400, detail=str(e)) from e
     except IntegrityError as e:
         db.rollback()
-        from app.services.sph import _agent_debug_log
-
-        _agent_debug_log(
-            "generate draft integrity error",
-            {"project_id": project_id, "error": str(e.orig)},
-            hypothesis_id="baseline-version",
-        )
         raise HTTPException(
             status_code=409,
             detail="Konflik versi baseline. Muat ulang halaman, lalu generate draft sekali lagi.",
         ) from e
     except Exception as e:
         db.rollback()
-        from app.services.sph import _agent_debug_log
-
-        _agent_debug_log(
-            "generate draft unexpected error",
-            {"project_id": project_id, "error": str(e), "type": type(e).__name__},
-            hypothesis_id="baseline-version",
-        )
         raise
 
 
@@ -400,34 +386,6 @@ def finalize_timeline_for_kickoff(
             apply_phase_transition(db, project, ProjectPhase.kickoff)
         db.commit()
         sph = get_or_create_sph(db, project_id)
-        # #region agent log
-        try:
-            import json
-            import time
-            from pathlib import Path
-
-            _log_path = Path(__file__).resolve().parents[2].parent / "debug-aa7388.log"
-            with _log_path.open("a", encoding="utf-8") as _f:
-                _f.write(
-                    json.dumps(
-                        {
-                            "sessionId": "aa7388",
-                            "hypothesisId": "H1-phase-tab",
-                            "location": "sph.py:finalize_timeline_for_kickoff",
-                            "message": "continue to kickoff",
-                            "data": {
-                                "project_id": project_id,
-                                "current_phase": project.current_phase.value,
-                            },
-                            "timestamp": int(time.time() * 1000),
-                            "runId": "post-fix",
-                        }
-                    )
-                    + "\n"
-                )
-        except OSError:
-            pass
-        # #endregion
         return {
             "ok": True,
             "current_phase": project.current_phase.value,

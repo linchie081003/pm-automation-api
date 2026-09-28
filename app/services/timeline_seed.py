@@ -352,34 +352,6 @@ def ensure_default_timeline_templates(db: Session) -> None:
             existing.items = wbs
             existing.description = f"Template timeline standar — {meth.value} (WBS)"
             existing.is_active = True
-            # #region agent log
-            try:
-                import json
-                import time
-                from pathlib import Path
-
-                log_path = Path(__file__).resolve().parents[3] / "debug-aa7388.log"
-                with log_path.open("a", encoding="utf-8") as f:
-                    f.write(
-                        json.dumps(
-                            {
-                                "sessionId": "aa7388",
-                                "hypothesisId": "H2-seed-skip",
-                                "location": "timeline_seed.py:ensure_default",
-                                "message": "refreshed default template WBS",
-                                "data": {
-                                    "methodology": meth.value,
-                                    "template_id": existing.id,
-                                    "item_count": len(wbs),
-                                },
-                                "timestamp": int(time.time() * 1000),
-                            }
-                        )
-                        + "\n"
-                    )
-            except OSError:
-                pass
-            # #endregion
             continue
         db.add(
             TimelineTemplate(

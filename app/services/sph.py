@@ -20,35 +20,6 @@ from app.services.schedule import (
 )
 
 
-def _agent_debug_log(message: str, data: dict, hypothesis_id: str = "baseline-version") -> None:
-    # #region agent log
-    try:
-        import json
-        from pathlib import Path
-
-        root = Path(__file__).resolve().parents[3]
-        payload = (
-            json.dumps(
-                {
-                    "sessionId": "aa7388",
-                    "hypothesisId": hypothesis_id,
-                    "location": "sph.py",
-                    "message": message,
-                    "data": data,
-                    "timestamp": int(datetime.utcnow().timestamp() * 1000),
-                }
-            )
-            + "\n"
-        )
-        for log_path in (root / "debug-aa7388.log", root / ".cursor" / "debug-aa7388.log"):
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-            with log_path.open("a", encoding="utf-8") as f:
-                f.write(payload)
-    except OSError:
-        pass
-    # #endregion
-
-
 def _line_items(items: list | None) -> list[str]:
     if not items:
         return []
@@ -193,18 +164,6 @@ def _scale_template_items_to_target(items: list, target_business_days: int) -> l
             last = roots[-1]
             last["duration_days"] = max(1, int(last.get("duration_days") or 1) + diff)
 
-    # #region agent log
-    _agent_debug_log(
-        "scale template to target_delivery_days",
-        {
-            "baseline_root_days": baseline,
-            "target_business_days": target_business_days,
-            "factor": round(factor, 4),
-            "after_root_sum": _template_root_business_days(scaled),
-        },
-        hypothesis_id="H-target-duration",
-    )
-    # #endregion
     return scaled
 
 
@@ -229,7 +188,6 @@ def rescale_existing_draft_to_target(
         }
         for r in rows
     ]
-    before_root = _template_root_business_days(scale_input)
     scaled = _scale_template_items_to_target(scale_input, target_business_days)
     dur_by_key = {
         str(x["row_key"]): int(x["duration_days"])
@@ -252,27 +210,6 @@ def rescale_existing_draft_to_target(
     start = sph.estimated_start_date
     save_draft_rows(db, project, new_rows, start)
 
-    # #region agent log
-    _agent_debug_log(
-        "rescaled existing draft to target_delivery_days",
-        {
-            "project_id": project.id,
-            "before_root_sum": before_root,
-            "target_business_days": target_business_days,
-            "after_root_sum": _template_root_business_days(
-                [
-                    {
-                        "parent_key": r.get("parent_ref"),
-                        "item_type": r.get("item_type"),
-                        "duration_days": r.get("duration_days"),
-                    }
-                    for r in new_rows
-                ]
-            ),
-        },
-        hypothesis_id="H-target-duration",
-    )
-    # #endregion
     return True
 
 
@@ -397,18 +334,6 @@ def _build_draft_baseline_from_template(
     sph.timeline_template_id = template.id
     template_items = list(template.items or [])
     target_days = int(sph.target_delivery_days) if sph.target_delivery_days else 0
-    # #region agent log
-    _agent_debug_log(
-        "generate draft timeline — target before scale",
-        {
-            "project_id": project.id,
-            "target_delivery_days": target_days,
-            "template_item_count": len(template_items),
-            "template_root_days": _template_root_business_days(template_items),
-        },
-        hypothesis_id="H-target-duration",
-    )
-    # #endregion
     if target_days > 0:
         template_items = _scale_template_items_to_target(template_items, target_days)
 
@@ -451,10 +376,6 @@ def _build_draft_baseline_from_template(
         baseline = draft
     else:
         next_ver = next_baseline_version(db, project.id)
-        _agent_debug_log(
-            "creating new draft baseline",
-            {"project_id": project.id, "next_version": next_ver},
-        )
         baseline = ScheduleBaseline(
             project_id=project.id,
             version=next_ver,
@@ -511,15 +432,6 @@ def _build_draft_baseline_from_template(
             last_end = r.target_date
     project.planned_end_date = last_end
 
-    _agent_debug_log(
-        "draft baseline saved",
-        {
-            "project_id": project.id,
-            "baseline_id": baseline.id,
-            "version": baseline.version,
-            "is_draft": baseline.is_draft,
-        },
-    )
     return baseline
 
 
@@ -563,8 +475,3 @@ def finalize_sph_timeline_for_kickoff(db: Session, project: Project) -> None:
         raise ValueError("Generate draft timeline dari template terlebih dahulu")
     sph.draft_baseline_generated_at = datetime.utcnow()
     sync_pack_from_sph(db, project)
-    _agent_debug_log(
-        "finalize sph timeline for kickoff",
-        {"project_id": project.id, "draft_baseline_generated_at": sph.draft_baseline_generated_at.isoformat()},
-        hypothesis_id="H3-timeline-flow",
-    )

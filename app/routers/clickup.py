@@ -433,39 +433,6 @@ def provision_clickup_timeline(
         raise HTTPException(status_code=400, detail=str(e)) from e
     except httpx.HTTPError as e:
         db.rollback()
-        # #region agent log
-        try:
-            import json
-            import time
-            from pathlib import Path
-
-            status = (
-                e.response.status_code
-                if isinstance(e, httpx.HTTPStatusError) and e.response is not None
-                else None
-            )
-            _log_path = Path(__file__).resolve().parents[2].parent / "debug-aa7388.log"
-            with _log_path.open("a", encoding="utf-8") as _f:
-                _f.write(
-                    json.dumps(
-                        {
-                            "sessionId": "aa7388",
-                            "hypothesisId": "H-clickup-provision",
-                            "location": "clickup.py:provision_clickup_timeline",
-                            "message": "provision httpx error",
-                            "data": {
-                                "project_id": project_id,
-                                "http_status": status,
-                                "err": str(e)[:400],
-                            },
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except OSError:
-            pass
-        # #endregion
         raise clickup_http_exception(e) from e
     except Exception as e:
         db.rollback()

@@ -16,34 +16,6 @@ def list_draft_timeline(db: Session, project_id: int) -> list[dict]:
     if not sph or not sph.draft_baseline_generated_at:
         return []
     rows = list_draft_rows(db, project_id)
-    # #region agent log
-    try:
-        import json
-        import time
-        from pathlib import Path
-
-        _log_path = Path(__file__).resolve().parents[2].parent / "debug-aa7388.log"
-        with _log_path.open("a", encoding="utf-8") as _f:
-            _f.write(
-                json.dumps(
-                    {
-                        "sessionId": "aa7388",
-                        "hypothesisId": "H-kickoff-draft-gate",
-                        "location": "kickoff_timeline.py:list_draft_timeline",
-                        "message": "kickoff draft list",
-                        "data": {
-                            "project_id": project_id,
-                            "ready": True,
-                            "row_count": len(rows),
-                        },
-                        "timestamp": int(time.time() * 1000),
-                    }
-                )
-                + "\n"
-            )
-    except OSError:
-        pass
-    # #endregion
     return rows
 
 

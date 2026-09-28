@@ -241,45 +241,6 @@ def recalc_draft_dates(
         if row.target_date:
             cursor = business_day_after(row.target_date, db)
 
-    # #region agent log
-    try:
-        import json
-        import time
-        from pathlib import Path
-
-        _log_path = Path(__file__).resolve().parents[2].parent / "debug-aa7388.log"
-        _sample = [
-            {
-                "name": r.name,
-                "dur": r.duration_days,
-                "start": r.start_date.isoformat() if r.start_date else None,
-                "end": r.target_date.isoformat() if r.target_date else None,
-                "type": r.item_type.value if r.item_type else None,
-            }
-            for r in sorted(rows, key=lambda x: (x.sort_order, x.id))[:12]
-        ]
-        with _log_path.open("a", encoding="utf-8") as _f:
-            _f.write(
-                json.dumps(
-                    {
-                        "sessionId": "aa7388",
-                        "hypothesisId": "H-dates-duration",
-                        "location": "draft_timeline.py:recalc_draft_dates",
-                        "message": "after recalc",
-                        "data": {
-                            "project_id": project_id,
-                            "anchor_start": start.isoformat(),
-                            "rows": _sample,
-                        },
-                        "timestamp": int(time.time() * 1000),
-                    }
-                )
-                + "\n"
-            )
-    except OSError:
-        pass
-    # #endregion
-
 
 def save_draft_rows(
     db: Session,
@@ -299,42 +260,6 @@ def save_draft_rows(
         raise ValueError("Draft timeline belum ada — generate dari SPH")
 
     rows = _resolve_draft_row_parents(rows)
-
-    # #region agent log
-    try:
-        import json
-        import time
-        from pathlib import Path
-
-        _log_path = Path(__file__).resolve().parents[2].parent / "debug-aa7388.log"
-        _log_path.parent.mkdir(parents=True, exist_ok=True)
-        roots = [
-            r.get("name")
-            for r in rows
-            if not (r.get("parent_ref") or r.get("parent_row_key"))
-        ]
-        with _log_path.open("a", encoding="utf-8") as _f:
-            _f.write(
-                json.dumps(
-                    {
-                        "sessionId": "aa7388",
-                        "hypothesisId": "H2-parent-ref",
-                        "location": "draft_timeline.py:save_draft_rows",
-                        "message": "save draft rows resolved parents",
-                        "data": {
-                            "project_id": project.id,
-                            "start": start.isoformat() if start else None,
-                            "row_count": len(rows),
-                            "root_names": roots[:8],
-                        },
-                        "timestamp": int(time.time() * 1000),
-                    }
-                )
-                + "\n"
-            )
-    except OSError:
-        pass
-    # #endregion
 
     validate_items = []
     for raw in rows:
