@@ -1,29 +1,56 @@
-"""Per-project weekly report anchor dates (weekday + cut-off offset)."""
+"""Weekly report calendar: report_date (end of period) + trailing period_start."""
 from datetime import date, timedelta
 
 
-def anchor_on_or_before(d: date, weekday: int) -> date:
-    """Most recent date on `weekday` (0=Mon) on or before d."""
+def report_date_on_or_before(d: date, weekday: int) -> date:
+    """Most recent report weekday on or before d."""
     wd = weekday % 7
     return d - timedelta(days=(d.weekday() - wd) % 7)
 
 
-def anchor_on_or_after(d: date, weekday: int) -> date:
+def report_date_on_or_after(d: date, weekday: int) -> date:
     wd = weekday % 7
     delta = (wd - d.weekday()) % 7
     return d + timedelta(days=delta)
 
 
-def period_for_anchor(anchor: date, cutoff_offset_days: int) -> tuple[date, date]:
-    """Returns (period_start, cut_off_date). period_start = anchor; cut_off = anchor + offset."""
-    cut_off = anchor + timedelta(days=cutoff_offset_days)
-    if cut_off < anchor:
-        period_start = cut_off
-        return period_start, anchor
-    return anchor, cut_off
+# Deprecated aliases (internal callers migrating)
+anchor_on_or_before = report_date_on_or_before
+anchor_on_or_after = report_date_on_or_after
 
 
-def anchor_dates_between(
+def display_period_day_count(period_length_days: int) -> int:
+    """Inclusive day count for UI (period_length_days=6 → 7 hari kalender)."""
+    return max(1, int(period_length_days) + 1)
+
+
+def period_for_report_date(
+    report_date: date,
+    period_length_days: int,
+    project_start_date: date | None = None,
+) -> tuple[date, date]:
+    """
+    Trailing period: period_start .. report_date (inclusive).
+    period_start = max(report_date - period_length_days, project_start_date).
+    """
+    raw_start = report_date - timedelta(days=period_length_days)
+    if project_start_date is not None and raw_start < project_start_date:
+        period_start = project_start_date
+    else:
+        period_start = raw_start
+    return period_start, report_date
+
+
+def period_for_anchor(
+    anchor: date,
+    cutoff_offset_days: int,
+    project_start_date: date | None = None,
+) -> tuple[date, date]:
+    """Returns (period_start, report_date). `anchor` is the report_date."""
+    return period_for_report_date(anchor, cutoff_offset_days, project_start_date)
+
+
+def report_dates_between(
     start: date,
     end: date,
     weekday: int,
@@ -36,7 +63,7 @@ def anchor_dates_between(
     if cap < start:
         return []
     end_eff = min(end, cap)
-    first = anchor_on_or_after(start, weekday)
+    first = report_date_on_or_after(start, weekday)
     if first > end_eff:
         return []
     out: list[date] = []
@@ -47,195 +74,226 @@ def anchor_dates_between(
     return out
 
 
-def next_anchor_from_today(today: date, weekday: int) -> date:
-    """Upcoming anchor (includes today if today is anchor day)."""
-    prev = anchor_on_or_before(today, weekday)
+anchor_dates_between = report_dates_between
+
+
+def next_report_date_from_today(today: date, weekday: int) -> date:
+    prev = report_date_on_or_before(today, weekday)
     if prev == today:
         return today
     return prev + timedelta(days=7)
 
 
-def calendar_anchor_window(
+next_anchor_from_today = next_report_date_from_today
+
+
+def calendar_report_date_window(
     today: date,
     weekday: int,
     *,
     weeks_back: int = 12,
     weeks_forward: int = 12,
 ) -> list[date]:
-    """Anchor dates on weekday around today when project schedule window unknown."""
     start = today - timedelta(days=7 * weeks_back)
     end = today + timedelta(days=7 * weeks_forward)
-    return anchor_dates_between(start, end, weekday, cap_at=end)
+    return report_dates_between(start, end, weekday, cap_at=end)
 
 
-def nearest_anchor_on_or_before(anchors: list[date], today: date) -> date | None:
-    if not anchors:
+calendar_anchor_window = calendar_report_date_window
+
+
+def nearest_report_date_on_or_before(dates: list[date], today: date) -> date | None:
+    if not dates:
         return None
-    past = [a for a in anchors if a <= today]
+    past = [a for a in dates if a <= today]
     if past:
         return past[-1]
-    return anchors[0]
+    return dates[0]
 
 
-def first_schedule_anchor_date(project_start: date | None, weekday: int) -> date | None:
-    """Anchor weekly report pertama pada / setelah project start."""
+nearest_anchor_on_or_before = nearest_report_date_on_or_before
+
+
+def first_schedule_report_date(project_start: date | None, weekday: int) -> date | None:
     if not project_start:
         return None
-    return anchor_on_or_after(project_start, weekday)
+    return report_date_on_or_after(project_start, weekday)
 
 
-def validate_weekly_first_anchor_date(
-    first_weekly: date,
+first_schedule_anchor_date = first_schedule_report_date
+
+
+def validate_first_report_date(
+    first_report: date,
     project_start: date | None,
     weekday: int,
 ) -> None:
-    min_anchor = first_schedule_anchor_date(project_start, weekday)
-    if min_anchor and first_weekly < min_anchor:
+    min_rd = first_schedule_report_date(project_start, weekday)
+    if min_rd and first_report < min_rd:
         raise ValueError(
-            "Tanggal weekly report pertama harus ≥ anchor pertama setelah project start "
-            f"({min_anchor.isoformat()})."
+            "Tanggal laporan pertama harus ≥ tanggal laporan pertama setelah project start "
+            f"({min_rd.isoformat()})."
         )
-    if first_weekly.weekday() != weekday % 7:
-        raise ValueError("Tanggal weekly report pertama harus jatuh pada hari anchor laporan.")
+    if first_report.weekday() != weekday % 7:
+        raise ValueError("Tanggal laporan pertama harus jatuh pada hari laporan (report weekday).")
 
 
-def weekly_anchor_range_start(
+validate_weekly_first_anchor_date = validate_first_report_date
+
+
+def weekly_report_range_start(
     project_start: date | None,
     weekday: int,
-    first_weekly: date | None,
+    first_report_date: date | None,
 ) -> date | None:
-    """Tanggal mulai rentang anchor weekly report (setelah project start)."""
-    if first_weekly is not None:
-        validate_weekly_first_anchor_date(first_weekly, project_start, weekday)
-        return first_weekly
-    return first_schedule_anchor_date(project_start, weekday)
+    if first_report_date is not None:
+        validate_first_report_date(first_report_date, project_start, weekday)
+        return first_report_date
+    return first_schedule_report_date(project_start, weekday)
 
 
-def weekly_report_anchor_dates(
+weekly_anchor_range_start = weekly_report_range_start
+
+
+def weekly_report_dates(
     project_start: date | None,
     project_end: date | None,
     weekday: int,
-    first_weekly: date | None,
+    first_report_date: date | None,
     *,
     cap_at: date | None = None,
 ) -> tuple[list[date], date | None]:
-    """Daftar tanggal anchor; planned S-curve dihitung per cut-off tiap anchor."""
     if not project_end:
         return [], None
-    range_start = weekly_anchor_range_start(project_start, weekday, first_weekly)
+    range_start = weekly_report_range_start(project_start, weekday, first_report_date)
     if not range_start:
-        range_start = first_schedule_anchor_date(project_start, weekday)
+        range_start = first_schedule_report_date(project_start, weekday)
     if not range_start:
         return [], None
     end_cap = project_end
     if cap_at is not None and cap_at < end_cap:
         end_cap = cap_at
-    anchors = anchor_dates_between(range_start, project_end, weekday, cap_at=end_cap)
-    return anchors, range_start
+    dates = report_dates_between(range_start, project_end, weekday, cap_at=end_cap)
+    return dates, range_start
 
 
-def filter_anchors_through_active_week(
-    anchors: list[date],
+weekly_report_anchor_dates = weekly_report_dates
+
+
+def filter_report_dates_through_active_week(
+    report_dates: list[date],
     weekday: int,
     today: date | None = None,
 ) -> list[date]:
-    """Hanya anchor weekly report yang sudah dimulai (≤ minggu laporan aktif)."""
-    if not anchors:
+    if not report_dates:
         return []
     today = today or date.today()
-    active = anchor_on_or_before(today, weekday)
-    if anchors[0] > active:
+    active = report_date_on_or_before(today, weekday)
+    if report_dates[0] > active:
         return []
-    return [a for a in anchors if a <= active]
+    return [d for d in report_dates if d <= active]
 
 
-def extend_anchors_for_project_end(
-    anchors: list[date],
+filter_anchors_through_active_week = filter_report_dates_through_active_week
+
+
+def extend_report_dates_for_project_end(
+    report_dates: list[date],
     project_end: date | None,
-    cutoff_offset_days: int,
+    period_length_days: int,
 ) -> list[date]:
-    """
-    Tambah satu periode anchor berikutnya jika cut-off anchor terakhir belum mencapai end proyek
-    (termasuk bila end proyek jatuh sebelum tanggal anchor minggu berikutnya).
-    """
-    if not anchors or not project_end:
-        return anchors
-    out = list(anchors)
+    """Extend until last report_date covers project_end (trailing: report_date >= end)."""
+    if not report_dates or not project_end:
+        return report_dates
+    out = list(report_dates)
     while True:
-        _, last_cut = period_for_anchor(out[-1], cutoff_offset_days)
-        if last_cut >= project_end:
+        last_report = out[-1]
+        if last_report >= project_end:
             break
-        next_anchor = out[-1] + timedelta(days=7)
-        if next_anchor in out:
+        next_rd = out[-1] + timedelta(days=7)
+        if next_rd in out:
             break
-        out.append(next_anchor)
+        out.append(next_rd)
     return out
 
 
-def ensure_snapshot_active_week_only(
-    project_anchor_weekday: int,
-    cutoff_offset_days: int,
-    anchor_date: date,
-    today: date | None = None,
-) -> date:
-    """Progress snapshot hanya untuk minggu laporan aktif (bukan periode yang sudah lewat)."""
-    today = today or date.today()
-    active_anchor = anchor_on_or_before(today, project_anchor_weekday)
-    anchor, _, _ = resolve_report_period(
-        project_anchor_weekday,
-        cutoff_offset_days,
-        anchor_date,
-        today,
-    )
-    if anchor < active_anchor:
-        raise ValueError(
-            "Progress snapshot tidak dapat digenerate untuk periode yang sudah lewat — "
-            f"pilih minggu aktif ({active_anchor.isoformat()})."
-        )
-    if anchor > active_anchor:
-        raise ValueError(
-            "Progress snapshot belum tersedia untuk periode mendatang — "
-            f"minggu aktif: {active_anchor.isoformat()}."
-        )
-    return anchor
+extend_anchors_for_project_end = extend_report_dates_for_project_end
 
 
-def ensure_weekly_period_has_started(
-    project_anchor_weekday: int,
-    cutoff_offset_days: int,
-    anchor_date: date,
-    today: date | None = None,
+def _normalize_report_date(
+    report_weekday: int,
+    report_date: date | None,
+    today: date,
 ) -> date:
-    """
-    Weekly report / snapshot hanya untuk periode yang sudah dimulai (anchor ≤ minggu aktif).
-    """
-    today = today or date.today()
-    active_anchor = anchor_on_or_before(today, project_anchor_weekday)
-    anchor, _, _ = resolve_report_period(
-        project_anchor_weekday,
-        cutoff_offset_days,
-        anchor_date,
-        today,
-    )
-    if anchor > active_anchor:
-        raise ValueError(
-            "Periode weekly report belum dimulai — pilih tanggal anchor pada atau sebelum "
-            f"minggu aktif ({active_anchor.isoformat()})."
-        )
-    return anchor
+    rd = report_date or next_report_date_from_today(today, report_weekday)
+    rd = report_date_on_or_before(rd, report_weekday)
+    if rd.weekday() != report_weekday % 7:
+        rd = report_date_on_or_before(rd, report_weekday)
+    return rd
 
 
 def resolve_report_period(
-    project_anchor_weekday: int,
-    cutoff_offset_days: int,
-    anchor_date: date | None,
+    report_weekday: int,
+    period_length_days: int,
+    report_date: date | None,
     today: date | None = None,
+    *,
+    project_start_date: date | None = None,
 ) -> tuple[date, date, date]:
-    """Returns (anchor, period_start, cut_off)."""
+    """
+    Returns (report_date, period_start, status_date).
+    status_date == report_date (trailing end of period; alias for legacy cut_off).
+    """
     today = today or date.today()
-    anchor = anchor_date or next_anchor_from_today(today, project_anchor_weekday)
-    anchor = anchor_on_or_before(anchor, project_anchor_weekday)
-    if anchor.weekday() != project_anchor_weekday % 7:
-        anchor = anchor_on_or_before(anchor, project_anchor_weekday)
-    period_start, cut_off = period_for_anchor(anchor, cutoff_offset_days)
-    return anchor, period_start, cut_off
+    rd = _normalize_report_date(report_weekday, report_date, today)
+    period_start, end = period_for_report_date(rd, period_length_days, project_start_date)
+    return end, period_start, end
+
+
+def ensure_snapshot_active_week_only(
+    report_weekday: int,
+    period_length_days: int,
+    report_date: date,
+    today: date | None = None,
+) -> date:
+    today = today or date.today()
+    active_rd = report_date_on_or_before(today, report_weekday)
+    rd, _, _ = resolve_report_period(
+        report_weekday,
+        period_length_days,
+        report_date,
+        today,
+    )
+    if rd < active_rd:
+        raise ValueError(
+            "Progress snapshot tidak dapat digenerate untuk periode yang sudah lewat — "
+            f"pilih minggu aktif ({active_rd.isoformat()})."
+        )
+    if rd > active_rd:
+        raise ValueError(
+            "Progress snapshot belum tersedia untuk periode mendatang — "
+            f"minggu aktif: {active_rd.isoformat()}."
+        )
+    return rd
+
+
+def ensure_weekly_period_has_started(
+    report_weekday: int,
+    period_length_days: int,
+    report_date: date,
+    today: date | None = None,
+) -> date:
+    today = today or date.today()
+    active_rd = report_date_on_or_before(today, report_weekday)
+    rd, _, _ = resolve_report_period(
+        report_weekday,
+        period_length_days,
+        report_date,
+        today,
+    )
+    if rd > active_rd:
+        raise ValueError(
+            "Periode weekly report belum dimulai — pilih tanggal laporan pada atau sebelum "
+            f"minggu aktif ({active_rd.isoformat()})."
+        )
+    return rd

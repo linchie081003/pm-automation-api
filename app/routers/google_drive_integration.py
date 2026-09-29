@@ -24,31 +24,10 @@ from app.services.google_drive import (
 router = APIRouter(prefix="/integrations/google-drive", tags=["google-drive"])
 
 _MAX_JSON_BYTES = 256_000
-_DEBUG_LOG = Path(__file__).resolve().parents[3] / "debug-aa7388.log"
 
 
 class ServiceAccountJsonBody(BaseModel):
     service_account_json: dict
-
-
-def _agent_log(message: str, data: dict, hypothesis_id: str) -> None:
-    # #region agent log
-    try:
-        import time
-
-        payload = {
-            "sessionId": "aa7388",
-            "timestamp": int(time.time() * 1000),
-            "location": "google_drive_integration.py",
-            "message": message,
-            "data": data,
-            "hypothesisId": hypothesis_id,
-        }
-        with open(_DEBUG_LOG, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(payload) + "\n")
-    except OSError:
-        pass
-    # #endregion
 
 
 def _integration_row(db: Session) -> IntegrationSettings:
@@ -129,18 +108,8 @@ def save_credentials_json(
     user: User = Depends(get_current_user),
     _: set[str] = Depends(PermissionChecker("integrations.google_drive.configure")),
 ):
-    _agent_log(
-        "save_credentials_json",
-        {"user_id": user.id, "transport": "json"},
-        "A",
-    )
     data, email = _parse_service_account_dict(body.service_account_json)
     _persist_service_account(db, data, email)
-    _agent_log(
-        "save_credentials_json_ok",
-        {"user_id": user.id, "client_email": email},
-        "A",
-    )
     return {"updated": True, "service_account_email": email}
 
 
@@ -151,11 +120,6 @@ async def upload_credentials_multipart(
     user: User = Depends(get_current_user),
     _: set[str] = Depends(PermissionChecker("integrations.google_drive.configure")),
 ):
-    _agent_log(
-        "upload_credentials_multipart",
-        {"user_id": user.id, "transport": "multipart", "filename": file.filename},
-        "A",
-    )
     raw = await file.read()
     data, email = _parse_service_account_json(raw)
     _persist_service_account(db, data, email)
@@ -190,15 +154,5 @@ def test_connection(
         test_drive_connection(db)
     except Exception as exc:
         detail = format_drive_api_error(exc)
-        _agent_log(
-            "test_connection_failed",
-            {"error_type": type(exc).__name__, "detail": detail[:300]},
-            "B",
-        )
         raise HTTPException(status_code=400, detail=detail) from exc
-    _agent_log(
-        "test_connection_ok",
-        {"client_email": service_account_email(db)},
-        "B",
-    )
     return {"ok": True, "service_account_email": service_account_email(db)}

@@ -38,10 +38,6 @@ DRIVE_SCOPES = (
 
 
 
-_DEBUG_LOG = Path(__file__).resolve().parents[3] / "debug-aa7388.log"
-
-
-
 _FOLDER_PATTERNS = (
 
     re.compile(r"/folders/([a-zA-Z0-9_-]+)"),
@@ -53,43 +49,6 @@ _FOLDER_PATTERNS = (
     re.compile(r"^([a-zA-Z0-9_-]{20,})$"),
 
 )
-
-
-
-
-
-def _agent_log(message: str, data: dict, hypothesis_id: str) -> None:
-
-    # #region agent log
-
-    try:
-
-        payload = {
-
-            "sessionId": "aa7388",
-
-            "timestamp": int(time.time() * 1000),
-
-            "location": "google_drive.py",
-
-            "message": message,
-
-            "data": data,
-
-            "hypothesisId": hypothesis_id,
-
-        }
-
-        with open(_DEBUG_LOG, "a", encoding="utf-8") as fh:
-
-            fh.write(json.dumps(payload) + "\n")
-
-    except OSError:
-
-        pass
-
-    # #endregion
-
 
 
 
@@ -348,16 +307,6 @@ def _assert_upload_folder(service, folder_id: str, db: Session | None) -> None:
 
     except HttpError as exc:
 
-        _agent_log(
-
-            "folder_get_failed",
-
-            {"folder_id": folder_id, "status": exc.resp.status, "reason": str(exc)[:200]},
-
-            "C",
-
-        )
-
         if exc.resp.status in (403, 404):
 
             raise RuntimeError(
@@ -387,16 +336,6 @@ def _assert_upload_folder(service, folder_id: str, db: Session | None) -> None:
             "Gunakan URL folder: …/drive/folders/<id>"
 
         )
-
-    _agent_log(
-
-        "folder_ok",
-
-        {"folder_id": folder_id, "name": meta.get("name")},
-
-        "C",
-
-    )
 
 
 
@@ -499,16 +438,6 @@ def upload_bytes_to_folder(
         )
 
     except HttpError as exc:
-
-        _agent_log(
-
-            "upload_create_failed",
-
-            {"folder_id": folder_id, "status": exc.resp.status, "reason": str(exc)[:200]},
-
-            "D",
-
-        )
 
         raise RuntimeError(format_drive_api_error(exc)) from exc
 

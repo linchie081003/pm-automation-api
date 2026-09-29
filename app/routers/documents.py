@@ -112,7 +112,11 @@ async def upload_document(
         project_id,
         user.id,
         "document.uploaded",
-        {"type": doc_type, "gdrive": bool(gdrive_url)},
+        {
+            "type": doc_type,
+            "filename": doc.filename,
+            "gdrive": bool(gdrive_url),
+        },
     )
     try:
         db.commit()

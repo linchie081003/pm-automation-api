@@ -22,6 +22,9 @@ ACTION_LABELS: dict[str, str] = {
     "project.updated": "Metadata proyek diperbarui",
     "bast.updated": "Checklist BAST / Closing diperbarui",
     "clickup.project_start.partial": "ClickUp (sebagian) saat Project Start",
+    "clickup.synced": "Sync progress dari ClickUp",
+    "milestone.created": "Milestone/timeline item ditambah",
+    "milestone.deleted": "Milestone/timeline item dihapus",
 }
 
 

@@ -9,6 +9,7 @@ from app.core.deps import get_current_user, get_permission_codes
 from app.core.project_access import ensure_permission, ensure_project_read, ensure_project_write
 from app.database import get_db
 from app.models import Project, ProjectPhase, ScheduleBaselineMilestone, User
+from app.services.activity import log_activity
 from app.services.project_lifecycle import (
     draft_timeline_editable,
     kickoff_draft_timeline_editable,
@@ -250,6 +251,13 @@ def update_sph(
         if sph.sph_client is not None and str(sph.sph_client).strip():
             project.client_name = str(sph.sph_client).strip()
     sph.updated_at = datetime.utcnow()
+    log_activity(
+        db,
+        project_id,
+        user.id,
+        "sph.updated",
+        {"fields": list(body.model_dump(exclude_unset=True).keys())},
+    )
     db.commit()
     return _out_with_draft(db, sph)
 
@@ -282,6 +290,13 @@ def update_draft_timeline(
         )
         sync_payment_terms_with_draft_timeline(db, sph)
         sph.updated_at = datetime.utcnow()
+        log_activity(
+            db,
+            project_id,
+            user.id,
+            "sph.draft_timeline.saved",
+            {"rows": len(rows)},
+        )
         db.commit()
         terms = compute_payment_term_amounts(sph.payment_terms or [], sph.sph_total_rupiah)
         return {"draft_timeline": rows, "payment_terms": terms}
@@ -351,6 +366,13 @@ def generate_draft(
         )
         sph = get_or_create_sph(db, project_id)
         sync_payment_terms_with_draft_timeline(db, sph)
+        log_activity(
+            db,
+            project_id,
+            user.id,
+            "sph.draft_timeline.generated",
+            {"baseline_version": baseline.version},
+        )
         db.commit()
         return {"baseline_version": baseline.version, "is_draft": baseline.is_draft}
     except ValueError as e:
@@ -384,6 +406,7 @@ def finalize_timeline_for_kickoff(
         target = next_phase(project.current_phase)
         if target == ProjectPhase.kickoff:
             apply_phase_transition(db, project, ProjectPhase.kickoff)
+        log_activity(db, project_id, user.id, "sph.advance_kickoff", {})
         db.commit()
         sph = get_or_create_sph(db, project_id)
         return {

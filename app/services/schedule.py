@@ -26,14 +26,34 @@ def monday_of(d: date) -> date:
     return d - timedelta(days=d.weekday())
 
 
-def snapshot_anchor_for_date(project: Project, on: date) -> tuple[date, date]:
-    """Normalize UI/report anchor → (week_start, week_end) for progress snapshots."""
-    from app.services.report_calendar import anchor_on_or_after
+def snapshot_key_for_report_date(
+    project: Project,
+    on: date,
+    *,
+    project_start_date: date | None = None,
+) -> tuple[date, date]:
+    """Normalize to DB keys: (week_start, week_end) both = report_date (trailing end)."""
+    from app.services.report_calendar import period_for_report_date, report_date_on_or_after
 
     wd = project.weekly_report_anchor_weekday % 7
-    anchor = on if on.weekday() == wd else anchor_on_or_after(on, project.weekly_report_anchor_weekday)
-    _, cut_off = period_for_anchor(anchor, project.weekly_report_cutoff_offset_days)
-    return anchor, cut_off
+    rd = on if on.weekday() == wd else report_date_on_or_after(
+        on, project.weekly_report_anchor_weekday
+    )
+    _, report_date = period_for_report_date(
+        rd,
+        project.weekly_report_cutoff_offset_days,
+        project_start_date,
+    )
+    return report_date, report_date
+
+
+def snapshot_anchor_for_date(
+    project: Project,
+    on: date,
+    *,
+    project_start_date: date | None = None,
+) -> tuple[date, date]:
+    return snapshot_key_for_report_date(project, on, project_start_date=project_start_date)
 
 
 def _progress_weight_rows(rows: list) -> list:
@@ -445,7 +465,12 @@ def save_weekly_progress(
             project.weekly_report_cutoff_offset_days,
             week_start,
         )
-        week_start, week_end = snapshot_anchor_for_date(project, week_start)
+        from app.services.schedule_window import project_report_start_date
+
+        pstart = project_report_start_date(db, project_id)
+        week_start, week_end = snapshot_key_for_report_date(
+            project, week_start, project_start_date=pstart
+        )
     else:
         week_start, week_end = week_bounds(week_start)
 
@@ -551,8 +576,12 @@ def seed_planned_weekly_targets(db: Session, project_id: int) -> dict:
     updated = 0
     out: list[dict] = []
     for row in series:
-        anchor = date.fromisoformat(row["anchor_date"])
+        anchor = date.fromisoformat(row.get("report_date") or row["anchor_date"])
         cut_off = date.fromisoformat(row["cut_off_date"])
+        if cut_off > anchor:
+            pass  # legacy forward row: keep stored week_end
+        else:
+            cut_off = anchor
         planned = float(row["planned_cumulative_pct"])
         existing = db.scalar(
             select(ProgressSnapshot).where(
@@ -628,7 +657,10 @@ def scurve_points(
     if not anchors or not target_rows:
         return []
 
-    target_by_anchor = {r["anchor_date"]: r for r in target_rows}
+    target_by_anchor: dict[str, dict] = {}
+    for r in target_rows:
+        key = r.get("report_date") or r["anchor_date"]
+        target_by_anchor[key] = r
     range_start = date_from if date_from is not None else anchors[0]
     range_end = date_to if date_to is not None else anchors[-1]
     snapshots = db.scalars(
@@ -693,7 +725,11 @@ def milestone_chart_points(
 ) -> dict:
     """Actual vs target (planned) per phase/milestone untuk grafik milestone."""
     from app.models import ClickUpTaskCache, Milestone, MilestoneStatus, TimelineItemType
-    from app.services.progress import build_clickup_lookups, row_clickup_progress_pct
+    from app.services.progress import (
+        build_clickup_lookups,
+        clickup_status_mapping_context,
+        row_clickup_progress_pct,
+    )
     from app.services.progress_metrics import active_report_week_context
     from app.services.schedule_window import kickoff_milestones
 
@@ -703,20 +739,23 @@ def milestone_chart_points(
             "as_of": None,
             "cut_off_date": None,
             "status_date_report": None,
+            "active_report_date": None,
             "active_anchor_date": None,
             "active_period_start": None,
             "items": [],
         }
 
-    anchor, period_start, cut_off, metrics_as_of = active_report_week_context(
-        project, as_of=as_of
+    report_date, period_start, cut_off, metrics_as_of = active_report_week_context(
+        project, as_of=as_of, db=db
     )
+    anchor = report_date
     plan_rows = kickoff_milestones(db, project_id) or planned_progress_rows(db, project_id)
     if not plan_rows:
         return {
             "as_of": metrics_as_of.isoformat(),
             "cut_off_date": cut_off.isoformat(),
             "status_date_report": metrics_as_of.isoformat(),
+            "active_report_date": anchor.isoformat(),
             "active_anchor_date": anchor.isoformat(),
             "active_period_start": period_start.isoformat(),
             "items": [],
@@ -736,53 +775,55 @@ def milestone_chart_points(
 
     phases = _phase_rows_for_planned(plan_rows)
     items: list[dict] = []
-    if phases:
-        for phase in sorted(phases, key=lambda p: (p.sort_order or 0, p.id or 0)):
-            actual = row_clickup_progress_pct(
-                phase, milestones, tasks_by_id, milestone_cache, caches=caches
-            )
-            items.append(
-                {
-                    "id": phase.id,
-                    "name": phase.name,
-                    "weight_pct": round(float(phase.weight_pct or 0), 2),
-                    "planned_pct": round(
-                        phase_planned_progress_pct(phase, metrics_as_of, db), 2
-                    ),
-                    "actual_pct": round(float(actual or 0), 2),
-                }
-            )
-    else:
-        prog = _progress_weight_rows(plan_rows)
-        for m in sorted(prog, key=lambda x: (x.sort_order or 0, x.id or 0)):
-            target = getattr(m, "target_date", None)
-            planned = 100.0 if target and target <= metrics_as_of else 0.0
-            if m.item_type == TimelineItemType.phase:
+    with clickup_status_mapping_context(db):
+        if phases:
+            for phase in sorted(phases, key=lambda p: (p.sort_order or 0, p.id or 0)):
                 actual = row_clickup_progress_pct(
-                    m, milestones, tasks_by_id, milestone_cache, caches=caches
+                    phase, milestones, tasks_by_id, milestone_cache, caches=caches
                 )
-            elif m.clickup_task_id or milestone_cache.get(m.id):
-                actual = row_clickup_progress_pct(
-                    m, milestones, tasks_by_id, milestone_cache, caches=caches
+                items.append(
+                    {
+                        "id": phase.id,
+                        "name": phase.name,
+                        "weight_pct": round(float(phase.weight_pct or 0), 2),
+                        "planned_pct": round(
+                            phase_planned_progress_pct(phase, metrics_as_of, db), 2
+                        ),
+                        "actual_pct": round(float(actual or 0), 2),
+                    }
                 )
-            elif m.status == MilestoneStatus.done and m.actual_date and m.actual_date <= metrics_as_of:
-                actual = 100.0
-            else:
-                actual = 0.0
-            items.append(
-                {
-                    "id": m.id,
-                    "name": m.name,
-                    "weight_pct": round(float(m.weight_pct or 0), 2),
-                    "planned_pct": round(planned, 2),
-                    "actual_pct": round(float(actual or 0), 2),
-                }
-            )
+        else:
+            prog = _progress_weight_rows(plan_rows)
+            for m in sorted(prog, key=lambda x: (x.sort_order or 0, x.id or 0)):
+                target = getattr(m, "target_date", None)
+                planned = 100.0 if target and target <= metrics_as_of else 0.0
+                if m.item_type == TimelineItemType.phase:
+                    actual = row_clickup_progress_pct(
+                        m, milestones, tasks_by_id, milestone_cache, caches=caches
+                    )
+                elif m.clickup_task_id or milestone_cache.get(m.id):
+                    actual = row_clickup_progress_pct(
+                        m, milestones, tasks_by_id, milestone_cache, caches=caches
+                    )
+                elif m.status == MilestoneStatus.done and m.actual_date and m.actual_date <= metrics_as_of:
+                    actual = 100.0
+                else:
+                    actual = 0.0
+                items.append(
+                    {
+                        "id": m.id,
+                        "name": m.name,
+                        "weight_pct": round(float(m.weight_pct or 0), 2),
+                        "planned_pct": round(planned, 2),
+                        "actual_pct": round(float(actual or 0), 2),
+                    }
+                )
 
     return {
         "as_of": metrics_as_of.isoformat(),
         "cut_off_date": cut_off.isoformat(),
         "status_date_report": metrics_as_of.isoformat(),
+        "active_report_date": anchor.isoformat(),
         "active_anchor_date": anchor.isoformat(),
         "active_period_start": period_start.isoformat(),
         "items": items,

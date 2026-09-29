@@ -91,20 +91,27 @@ def anchor_rows_with_planned(
     active_anchor = anchor_on_or_before(today, project.weekly_report_anchor_weekday)
     last_i = len(anchors) - 1
     out: list[dict] = []
-    for i, anchor in enumerate(anchors):
-        _, cut_off = period_for_anchor(anchor, project.weekly_report_cutoff_offset_days)
-        as_of = cut_off
-        report_cut_off = cut_off
+    project_start = project_report_start_date(db, project)
+    for i, rd in enumerate(anchors):
+        period_start, report_date = period_for_anchor(
+            rd,
+            project.weekly_report_cutoff_offset_days,
+            project_start,
+        )
+        as_of = report_date
+        status_date = report_date
         if i == last_i and project_end:
             as_of = project_end
-            report_cut_off = project_end
-        elif anchor == active_anchor and today < cut_off:
+            status_date = project_end
+        elif rd == active_anchor and today < report_date:
             as_of = today
         planned = planned_cumulative_at_cutoff(db, project.id, as_of)
         out.append(
             {
-                "anchor_date": anchor.isoformat(),
-                "cut_off_date": report_cut_off.isoformat(),
+                "report_date": report_date.isoformat(),
+                "period_start": period_start.isoformat(),
+                "anchor_date": report_date.isoformat(),
+                "cut_off_date": status_date.isoformat(),
                 "planned_cumulative_pct": planned,
             }
         )

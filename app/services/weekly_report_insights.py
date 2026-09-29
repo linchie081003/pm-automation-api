@@ -97,26 +97,29 @@ def phases_in_period(
     *,
     as_of: date,
 ) -> list[dict]:
-    tasks_by_id, milestone_cache = build_clickup_lookups(milestones, caches)
-    rows: list[dict] = []
-    for phase in _timeline_phases(plan_rows):
-        if not _phase_overlaps_period(phase, period_start, period_end):
-            continue
-        planned = phase_planned_progress_pct(phase, as_of, db)
-        actual = row_clickup_progress_pct(
-            phase, milestones, tasks_by_id, milestone_cache, caches=caches
-        )
-        rows.append(
-            {
-                "name": phase.name,
-                "start_date": phase.start_date.isoformat() if phase.start_date else None,
-                "target_date": phase.target_date.isoformat() if phase.target_date else None,
-                "planned_pct": round(planned, 2),
-                "actual_pct": round(float(actual or 0), 2),
-            }
-        )
-    rows.sort(key=lambda r: (r["start_date"] or "", r["name"]))
-    return rows
+    from app.services.progress import clickup_status_mapping_context
+
+    with clickup_status_mapping_context(db):
+        tasks_by_id, milestone_cache = build_clickup_lookups(milestones, caches)
+        rows: list[dict] = []
+        for phase in _timeline_phases(plan_rows):
+            if not _phase_overlaps_period(phase, period_start, period_end):
+                continue
+            planned = phase_planned_progress_pct(phase, as_of, db)
+            actual = row_clickup_progress_pct(
+                phase, milestones, tasks_by_id, milestone_cache, caches=caches
+            )
+            rows.append(
+                {
+                    "name": phase.name,
+                    "start_date": phase.start_date.isoformat() if phase.start_date else None,
+                    "target_date": phase.target_date.isoformat() if phase.target_date else None,
+                    "planned_pct": round(planned, 2),
+                    "actual_pct": round(float(actual or 0), 2),
+                }
+            )
+        rows.sort(key=lambda r: (r["start_date"] or "", r["name"]))
+        return rows
 
 
 def phase_gap_rows(
@@ -128,50 +131,53 @@ def phase_gap_rows(
     *,
     min_gap_pp: float = 1.0,
 ) -> list[dict]:
-    tasks_by_id, milestone_cache = build_clickup_lookups(milestones, caches)
-    phases = _phase_rows_for_planned(plan_rows)
-    rows: list[dict] = []
-    if phases:
-        for phase in phases:
-            planned = phase_planned_progress_pct(phase, as_of, db)
-            actual = row_clickup_progress_pct(
-                phase, milestones, tasks_by_id, milestone_cache, caches=caches
-            )
-            gap_pp = round(planned - float(actual or 0), 2)
-            if gap_pp >= min_gap_pp:
-                rows.append(
-                    {
-                        "phase_id": phase.id,
-                        "name": phase.name,
-                        "planned_pct": round(planned, 2),
-                        "actual_pct": round(float(actual or 0), 2),
-                        "gap_pp": gap_pp,
-                    }
-                )
-    else:
-        from app.services.schedule import _progress_weight_rows
+    from app.services.progress import clickup_status_mapping_context
 
-        for m in _progress_weight_rows(plan_rows):
-            if m.item_type != TimelineItemType.milestone:
-                continue
-            target = getattr(m, "target_date", None)
-            planned = 100.0 if target and target <= as_of else 0.0
-            actual = row_clickup_progress_pct(
-                m, milestones, tasks_by_id, milestone_cache, caches=caches
-            )
-            gap_pp = round(planned - float(actual or 0), 2)
-            if gap_pp >= min_gap_pp:
-                rows.append(
-                    {
-                        "phase_id": m.id,
-                        "name": m.name,
-                        "planned_pct": round(planned, 2),
-                        "actual_pct": round(float(actual or 0), 2),
-                        "gap_pp": gap_pp,
-                    }
+    with clickup_status_mapping_context(db):
+        tasks_by_id, milestone_cache = build_clickup_lookups(milestones, caches)
+        phases = _phase_rows_for_planned(plan_rows)
+        rows: list[dict] = []
+        if phases:
+            for phase in phases:
+                planned = phase_planned_progress_pct(phase, as_of, db)
+                actual = row_clickup_progress_pct(
+                    phase, milestones, tasks_by_id, milestone_cache, caches=caches
                 )
-    rows.sort(key=lambda r: r["gap_pp"], reverse=True)
-    return rows
+                gap_pp = round(planned - float(actual or 0), 2)
+                if gap_pp >= min_gap_pp:
+                    rows.append(
+                        {
+                            "phase_id": phase.id,
+                            "name": phase.name,
+                            "planned_pct": round(planned, 2),
+                            "actual_pct": round(float(actual or 0), 2),
+                            "gap_pp": gap_pp,
+                        }
+                    )
+        else:
+            from app.services.schedule import _progress_weight_rows
+
+            for m in _progress_weight_rows(plan_rows):
+                if m.item_type != TimelineItemType.milestone:
+                    continue
+                target = getattr(m, "target_date", None)
+                planned = 100.0 if target and target <= as_of else 0.0
+                actual = row_clickup_progress_pct(
+                    m, milestones, tasks_by_id, milestone_cache, caches=caches
+                )
+                gap_pp = round(planned - float(actual or 0), 2)
+                if gap_pp >= min_gap_pp:
+                    rows.append(
+                        {
+                            "phase_id": m.id,
+                            "name": m.name,
+                            "planned_pct": round(planned, 2),
+                            "actual_pct": round(float(actual or 0), 2),
+                            "gap_pp": gap_pp,
+                        }
+                    )
+        rows.sort(key=lambda r: r["gap_pp"], reverse=True)
+        return rows
 
 
 def task_activity_rows(
@@ -293,12 +299,16 @@ def weekly_report_preview_insights(
     caches = list(tasks)
     phase_gaps = phase_gap_rows(db, plan_rows, milestones, caches, cut_off)
 
-    next_anchor = anchor + timedelta(days=7)
+    from app.services.schedule_window import project_report_start_date
+
+    next_rd = anchor + timedelta(days=7)
+    pstart = project_report_start_date(db, project)
     _, next_start, next_end = resolve_report_period(
         project.weekly_report_anchor_weekday,
         project.weekly_report_cutoff_offset_days,
-        next_anchor,
+        next_rd,
         cut_off,
+        project_start_date=pstart,
     )
     tasks_done, tasks_next = task_activity_rows(
         caches, period_start, cut_off, next_start, next_end

@@ -22,7 +22,7 @@ from app.services.schedule import (
     planned_pct_as_of,
     save_weekly_progress,
 )
-from app.services.schedule_window import kickoff_milestones
+from app.services.schedule_window import kickoff_milestones, project_report_start_date
 from app.services.progress import resolve_actual_progress
 from app.services.report_calendar import ensure_weekly_period_has_started, resolve_report_period
 from app.services.clickup import sync_project_tasks
@@ -61,12 +61,14 @@ def preview_weekly_report(
         project.weekly_report_cutoff_offset_days,
         week_start,
     )
-    anchor, period_start, week_end = resolve_report_period(
+    pstart = project_report_start_date(db, project_id)
+    report_date, period_start, week_end = resolve_report_period(
         project.weekly_report_anchor_weekday,
         project.weekly_report_cutoff_offset_days,
         week_start,
+        project_start_date=pstart,
     )
-    week_start = anchor
+    week_start = report_date
     existing = db.scalar(
         select(WeeklyReport).where(
             WeeklyReport.project_id == project_id,
@@ -109,13 +111,18 @@ def preview_weekly_report(
         rag_schedule=health.get("rag_schedule"),
     )
 
+    from app.services.report_calendar import display_period_day_count
+
     return {
+        "report_date": report_date.isoformat(),
         "week_start": week_start.isoformat(),
         "week_end": week_end.isoformat(),
-        "anchor_date": week_start.isoformat(),
+        "anchor_date": report_date.isoformat(),
         "period_start": period_start.isoformat(),
         "target_week_start": period_start.isoformat(),
         "cut_off_date": week_end.isoformat(),
+        "period_length_days": project.weekly_report_cutoff_offset_days,
+        "period_day_count": display_period_day_count(project.weekly_report_cutoff_offset_days),
         "status_date_report": health.get("status_date") or week_end.isoformat(),
         "generate_progress_pct": round(actual, 2),
         "already_exists": existing is not None,
@@ -189,12 +196,14 @@ def generate_weekly_report(
         week_start,
     )
     _ensure_clickup_ready(db, project)
-    anchor, _, week_end = resolve_report_period(
+    pstart = project_report_start_date(db, project_id)
+    report_date, _, week_end = resolve_report_period(
         project.weekly_report_anchor_weekday,
         project.weekly_report_cutoff_offset_days,
         week_start,
+        project_start_date=pstart,
     )
-    week_start = anchor
+    week_start = report_date
     existing = db.scalar(
         select(WeeklyReport).where(
             WeeklyReport.project_id == project_id,
@@ -317,10 +326,12 @@ def _write_report_files(
     )
 
     xlsx_dest = out_dir / f"{stamp}_Weekly_Report_{project.code}.xlsx"
-    anchor, _, week_end = resolve_report_period(
+    pstart = project_report_start_date(db, project)
+    _, _, week_end = resolve_report_period(
         project.weekly_report_anchor_weekday,
         project.weekly_report_cutoff_offset_days,
         report.week_start,
+        project_start_date=pstart,
     )
     frozen = report.frozen_metrics or {}
     planned = float(frozen.get("planned_pct") or 0)

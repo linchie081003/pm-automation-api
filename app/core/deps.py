@@ -62,26 +62,6 @@ def get_current_user(
     user: Annotated[User | None, Depends(get_current_user_optional)],
 ) -> User:
     if not user:
-        # #region agent log
-        try:
-            import json
-            import time
-            from pathlib import Path
-
-            log_path = Path(__file__).resolve().parents[3] / "debug-aa7388.log"
-            payload = {
-                "sessionId": "aa7388",
-                "timestamp": int(time.time() * 1000),
-                "location": "deps.py:get_current_user",
-                "message": "auth_missing",
-                "data": {},
-                "hypothesisId": "A",
-            }
-            with open(log_path, "a", encoding="utf-8") as fh:
-                fh.write(json.dumps(payload) + "\n")
-        except OSError:
-            pass
-        # #endregion
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",

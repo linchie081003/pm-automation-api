@@ -13,6 +13,7 @@ from app.services.deck_kickoff import build_kickoff_deck_path, generate_kickoff_
 from app.services.deck_pre_kickoff import build_pre_kickoff_deck_path, generate_pre_kickoff_deck
 from app.services.kickoff_timeline import confirm_kickoff_timeline, list_draft_timeline
 from app.services.pre_kickoff import check_pack_complete, sync_pack_from_sph
+from app.services.activity import log_activity
 from app.services.project_lifecycle import prior_phase_data_locked
 
 router = APIRouter(prefix="/projects/{project_id}/pre-kickoff", tags=["pre-kickoff"])
@@ -112,6 +113,13 @@ def update_pack(
         setattr(pack, k, v)
     pack.is_complete = check_pack_complete(pack)
     pack.updated_at = datetime.utcnow()
+    log_activity(
+        db,
+        project_id,
+        user.id,
+        "pre_kickoff.updated",
+        {"fields": list(data.keys())},
+    )
     db.commit()
     return _pack_out(db, pack)
 
@@ -137,6 +145,7 @@ def confirm_timeline(
         confirm_kickoff_timeline(db, project)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    log_activity(db, project_id, user.id, "pre_kickoff.timeline_confirmed", {})
     db.commit()
     pack = db.get(PreKickoffPack, project_id)
     if pack:

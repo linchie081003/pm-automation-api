@@ -131,8 +131,10 @@ def compute_health(db: Session, project_id: int, as_of: date | None = None) -> d
         "project_start_date": start_iso,
         "project_end_date": end_iso,
     }
+    out["report_date"] = anchor.isoformat()
     out["report_anchor_date"] = anchor.isoformat()
     out["report_cut_off_date"] = status_cutoff.isoformat()
+    out["active_report_date"] = anchor.isoformat()
     if snap:
         out["snapshot_week_start"] = snap.week_start.isoformat()
         out["snapshot_week_end"] = snap.week_end.isoformat()

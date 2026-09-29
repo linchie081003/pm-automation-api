@@ -16,6 +16,7 @@ from app.models import (
     ScheduleBaselineMilestone,
     User,
 )
+from app.services.activity import log_activity
 from app.schemas.schedule import (
     BaselineMilestoneOut,
     BaselineOut,
@@ -220,6 +221,13 @@ def save_week_progress(
         week_start,
         ProgressSnapshotSource.manual_save,
     )
+    log_activity(
+        db,
+        project_id,
+        user.id,
+        "progress.week.saved",
+        {"week_start": week_key.isoformat(), "created": existing is None},
+    )
     db.commit()
     db.refresh(snap)
     return SaveWeekResponse(created=existing is None, snapshot=_snapshot_out(snap))
@@ -289,39 +297,55 @@ def list_report_anchors(
         project_end = None
         project_start = None
         range_start = None
-    out = []
-    for a in anchors:
-        _, cut = period_for_anchor(a, project.weekly_report_cutoff_offset_days)
-        out.append({"anchor_date": a.isoformat(), "cut_off_date": cut.isoformat()})
-    _, _, next_cut = resolve_report_period(
+    pstart = project_start or project_report_start_date(db, project_id)
+
+    def _anchor_row(rd: date) -> dict:
+        ps, report_date = period_for_anchor(
+            rd, project.weekly_report_cutoff_offset_days, pstart
+        )
+        return {
+            "report_date": report_date.isoformat(),
+            "period_start": ps.isoformat(),
+            "anchor_date": report_date.isoformat(),
+            "cut_off_date": report_date.isoformat(),
+        }
+
+    out = [_anchor_row(a) for a in anchors]
+    _, _, next_rd = resolve_report_period(
         project.weekly_report_anchor_weekday,
         project.weekly_report_cutoff_offset_days,
         None,
         today,
+        project_start_date=pstart,
     )
-    out_started = []
-    for a in anchors_started:
-        _, cut = period_for_anchor(a, project.weekly_report_cutoff_offset_days)
-        out_started.append({"anchor_date": a.isoformat(), "cut_off_date": cut.isoformat()})
+    out_started = [_anchor_row(a) for a in anchors_started]
     from app.services.progress_metrics import active_report_week_context
 
-    active_anchor = anchor_on_or_before(today, project.weekly_report_anchor_weekday)
-    _, active_period_start, active_cut_off, status_date_report = active_report_week_context(
-        project
+    active_rd = anchor_on_or_before(today, project.weekly_report_anchor_weekday)
+    active_report_date, active_period_start, active_status, status_date_report = (
+        active_report_week_context(project, db=db)
     )
     return {
         "anchors": out,
         "anchors_started": out_started,
-        "active_anchor_date": active_anchor.isoformat(),
+        "report_weekday": project.weekly_report_anchor_weekday,
+        "period_length_days": project.weekly_report_cutoff_offset_days,
+        "active_report_date": active_report_date.isoformat(),
         "active_period_start": active_period_start.isoformat(),
-        "active_cut_off_date": active_cut_off.isoformat(),
+        "active_cut_off_date": active_status.isoformat(),
         "status_date_report": status_date_report.isoformat(),
-        "next_anchor_hint": next_cut.isoformat(),
+        "next_report_date_hint": next_rd.isoformat(),
+        "active_anchor_date": active_report_date.isoformat(),
+        "next_anchor_hint": next_rd.isoformat(),
         "project_start_date": project_start.isoformat() if project_start else None,
         "schedule_end": project_end.isoformat() if project_end else None,
         "range_start": range_start.isoformat() if range_start else None,
         "bounds_source": bound_source,
+        "min_first_report_date": min_first,
         "min_first_anchor_date": min_first,
+        "first_report_date": project.weekly_report_first_anchor_date.isoformat()
+        if project.weekly_report_first_anchor_date
+        else None,
         "weekly_report_first_anchor_date": project.weekly_report_first_anchor_date.isoformat()
         if project.weekly_report_first_anchor_date
         else None,

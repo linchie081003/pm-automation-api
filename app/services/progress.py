@@ -795,7 +795,8 @@ def milestone_actual_progress_pct(db: Session, project_id: int, as_of: date) -> 
 
 
 def resolve_actual_progress(db: Session, project: Project, as_of: date) -> float:
-    cu = clickup_actual_progress_pct(db, project, as_of)
-    if cu is not None:
-        return cu
-    return milestone_actual_progress_pct(db, project.id, as_of)
+    with clickup_status_mapping_context(db):
+        cu = clickup_actual_progress_pct(db, project, as_of)
+        if cu is not None:
+            return cu
+        return milestone_actual_progress_pct(db, project.id, as_of)

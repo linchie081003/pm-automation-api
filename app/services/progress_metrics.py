@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session
 
 from app.models import ProgressSnapshot, ProgressSnapshotSource, Project
 from app.services.progress import resolve_actual_progress
-from app.services.report_calendar import anchor_on_or_before, resolve_report_period
+from app.services.report_calendar import report_date_on_or_before, resolve_report_period
 from app.services.schedule import compute_spi, planned_pct_as_of
-from app.services.schedule_window import kickoff_milestones
+from app.services.schedule_window import kickoff_milestones, project_report_start_date
 
 
 def snapshot_for_anchor_week(
@@ -23,24 +23,29 @@ def snapshot_for_anchor_week(
 
 
 def active_report_week_context(
-    project: Project, *, as_of: date | None = None
+    project: Project,
+    *,
+    as_of: date | None = None,
+    db: Session | None = None,
 ) -> tuple[date, date, date, date]:
     """
-    Minggu laporan aktif: (anchor, period_start, cut_off, metrics_as_of).
-    metrics_as_of = min(hari ini, cut-off) untuk actual live di minggu berjalan.
+    Minggu laporan aktif: (report_date, period_start, status_date, metrics_as_of).
+    status_date == report_date (trailing).
     """
     today = date.today()
     explicit = as_of is not None
     ref = as_of or today
-    anchor = anchor_on_or_before(ref, project.weekly_report_anchor_weekday)
-    _, period_start, cut_off = resolve_report_period(
+    rd_ref = report_date_on_or_before(ref, project.weekly_report_anchor_weekday)
+    pstart = project_report_start_date(db, project) if db else None
+    report_date, period_start, status_date = resolve_report_period(
         project.weekly_report_anchor_weekday,
         project.weekly_report_cutoff_offset_days,
-        anchor,
+        rd_ref,
         ref,
+        project_start_date=pstart,
     )
-    metrics_as_of = ref if explicit else min(today, cut_off)
-    return anchor, period_start, cut_off, metrics_as_of
+    metrics_as_of = ref if explicit else min(today, status_date)
+    return report_date, period_start, status_date, metrics_as_of
 
 
 def delivery_week_metrics(
@@ -53,7 +58,11 @@ def delivery_week_metrics(
     Target vs actual untuk minggu laporan aktif (atau minggu as_of jika diberikan).
     Returns planned, actual, status_date (cut-off), anchor, health_source.
     """
-    anchor, _, cut_off, metrics_as_of = active_report_week_context(project, as_of=as_of)
+    report_date, _, status_date, metrics_as_of = active_report_week_context(
+        project, as_of=as_of, db=db
+    )
+    cut_off = status_date
+    anchor = report_date
     plan_rows = kickoff_milestones(db, project.id)
     if not plan_rows:
         from app.services.schedule import planned_progress_rows

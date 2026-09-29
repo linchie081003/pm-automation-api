@@ -18,6 +18,7 @@ from app.models import (
     TimelineItemType,
     User,
 )
+from app.services.activity import log_activity
 from app.services.progress import (
     build_clickup_lookups,
     clickup_status_mapping_context,
@@ -179,6 +180,13 @@ def create_milestone(
         status=MilestoneStatus(body.status),
     )
     db.add(m)
+    log_activity(
+        db,
+        project_id,
+        user.id,
+        "milestone.created",
+        {"name": m.name, "item_type": m.item_type.value},
+    )
     db.commit()
     db.refresh(m)
     return MilestoneOut.model_validate(m)
@@ -227,6 +235,13 @@ def patch_milestone(
         data["item_type"] = TimelineItemType(data["item_type"])
     for k, v in data.items():
         setattr(m, k, v)
+    log_activity(
+        db,
+        project_id,
+        user.id,
+        "milestone.updated",
+        {"milestone_id": m.id, "name": m.name, "fields": list(data.keys())},
+    )
     db.commit()
     db.refresh(m)
     return MilestoneOut.model_validate(m)
@@ -259,6 +274,13 @@ def set_timeline_project_start(
         result = apply_project_timeline_start(db, project, body.start_date)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    log_activity(
+        db,
+        project_id,
+        user.id,
+        "timeline.project_start",
+        {"start_date": body.start_date.isoformat()},
+    )
     db.commit()
     return result
 
@@ -287,6 +309,13 @@ def delete_milestone(
         delete(ScheduleBaselineMilestone).where(
             ScheduleBaselineMilestone.milestone_id == milestone_id
         )
+    )
+    log_activity(
+        db,
+        project_id,
+        user.id,
+        "milestone.deleted",
+        {"milestone_id": milestone_id, "name": m.name},
     )
     db.delete(m)
     db.commit()

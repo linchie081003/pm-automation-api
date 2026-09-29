@@ -11,6 +11,7 @@ from app.core.deps import PermissionChecker, get_current_user, get_permission_co
 from app.core.project_access import ensure_permission, ensure_project_read, ensure_project_write
 from app.database import get_db
 from app.models import Milestone, Project, User, WeeklyReport
+from app.services.activity import log_activity
 from app.services.weekly_report import generate_weekly_report, preview_weekly_report
 from app.config import settings
 
@@ -94,6 +95,13 @@ def generate_report(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    log_activity(
+        db,
+        project_id,
+        user.id,
+        "weekly_report.generated",
+        {"report_id": report.id, "week_start": report.week_start.isoformat()},
+    )
     db.commit()
     return {"id": report.id, "week_start": report.week_start.isoformat()}
 

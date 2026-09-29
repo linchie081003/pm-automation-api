@@ -651,12 +651,23 @@ def apply_clickup_dates_to_timeline(db: Session, project_id: int) -> int:
         if cache:
             start: date | None = None
             end: date | None = None
-            if m.item_type == TimelineItemType.subtask and cache.parent_task_id:
+            if cache.parent_task_id and (
+                m.item_type == TimelineItemType.subtask
+                or m.parent_id
+            ):
                 parent = by_tid.get(cache.parent_task_id)
+                if not parent and m.parent_id:
+                    parent_m = ms_by_id.get(m.parent_id)
+                    if parent_m and parent_m.clickup_task_id:
+                        parent = by_tid.get(parent_m.clickup_task_id)
                 if parent:
                     start, end, _ = _parent_date_span(
                         parent, ms_by_id=ms_by_id, ms_by_clickup=ms_by_clickup
                     )
+                elif m.parent_id:
+                    parent_m = ms_by_id.get(m.parent_id)
+                    if parent_m and (parent_m.start_date or parent_m.target_date):
+                        start, end = parent_m.start_date, parent_m.target_date
             if not start and not end:
                 start = _cache_start_date(cache)
                 end = cache.due_date
@@ -990,9 +1001,9 @@ def _task_recap_row(
     item_type: str,
     depth: int,
     parent_clickup_task_id: str | None,
-    subtasks: list[ClickUpTaskCache] | None = None,
+    percent_complete: float | None,
 ) -> dict:
-    from app.services.progress import classify_clickup_status, task_cache_progress_pct
+    from app.services.progress import classify_clickup_status
 
     list_id = c.clickup_list_id or (phase.clickup_list_id if phase else None)
     raw_status = c.status
@@ -1009,7 +1020,7 @@ def _task_recap_row(
         "time_spent_ms": c.time_spent_ms,
         "time_estimate_ms": c.time_estimate_ms,
         "url": c.url,
-        "percent_complete": task_cache_progress_pct(c, subtasks=subtasks),
+        "percent_complete": percent_complete,
         "sort_order": sort_order,
         "milestone_id": milestone_id,
         "phase_name": phase.name if phase else None,
@@ -1020,12 +1031,20 @@ def _task_recap_row(
 
 
 def task_recap(db: Session, project_id: int) -> dict:
+    from app.services.progress import clickup_status_mapping_context
+
+    with clickup_status_mapping_context(db):
+        return _task_recap_body(db, project_id)
+
+
+def _task_recap_body(db: Session, project_id: int) -> dict:
     from app.models import TimelineItemType
     from app.services.progress import (
         _clickup_roots_for_phase,
         build_clickup_lookups,
         phase_workflow_status,
         row_clickup_progress_pct,
+        task_cache_progress_pct,
     )
 
     milestones = list(
@@ -1070,6 +1089,12 @@ def task_recap(db: Session, project_id: int) -> dict:
         if cache.id in seen_cache_ids:
             return
         seen_cache_ids.add(cache.id)
+        if milestone is not None:
+            pct = row_clickup_progress_pct(
+                milestone, milestones, tasks_by_id, by_mid, caches=caches
+            )
+        else:
+            pct = task_cache_progress_pct(cache, subtasks=cu_subs or None)
         row = _task_recap_row(
             cache,
             sort_order=sort_order,
@@ -1079,7 +1104,7 @@ def task_recap(db: Session, project_id: int) -> dict:
             item_type=item_type,
             depth=depth,
             parent_clickup_task_id=parent_tid,
-            subtasks=cu_subs,
+            percent_complete=pct,
         )
         tasks_flat.append(row)
 

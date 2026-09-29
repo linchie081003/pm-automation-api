@@ -11,6 +11,7 @@ from app.core.deps import get_current_user, get_permission_codes
 from app.core.project_access import ensure_permission, ensure_project_read
 from app.database import get_db
 from app.models import Project, User
+from app.services.activity import log_activity
 from app.services.clickup import ClickUpSyncError, sync_project_tasks, task_recap
 from app.services.templates.loader import copy_template
 from app.services.templates.placeholders import build_mapping, replace_in_xlsx
@@ -44,6 +45,16 @@ def sync_tasks(
         raise HTTPException(status_code=404, detail="Not found")
     try:
         result = sync_project_tasks(db, project)
+        log_activity(
+            db,
+            project_id,
+            user.id,
+            "clickup.synced",
+            {
+                "tasks": result.get("count") or result.get("synced") or result.get("updated"),
+                "detail_keys": list(result.keys())[:8],
+            },
+        )
         db.commit()
         return result
     except ClickUpSyncError as e:

@@ -9,6 +9,7 @@ from app.core.deps import PermissionChecker, get_current_user, get_permission_co
 from app.core.project_access import ensure_permission, ensure_project_read, ensure_project_write
 from app.database import get_db
 from app.models import (
+    ActivityLog,
     Milestone,
     MilestoneStatus,
     Project,
@@ -24,6 +25,7 @@ from app.models import (
     User,
 )
 from app.services.activity import log_activity
+from app.services.activity_catalog import action_label
 from app.services.authorization import filter_projects_for_user
 from app.services.bast import bast_checklist_for_display, default_bast_checklist, normalize_bast_checklist
 from app.services.bootstrap import ensure_project_owner_member
@@ -58,6 +60,9 @@ class ProjectMetaPatch(BaseModel):
     weekly_report_anchor_weekday: int | None = Field(default=None, ge=0, le=6)
     weekly_report_cutoff_offset_days: int | None = None
     weekly_report_first_anchor_date: date | None = None
+    report_weekday: int | None = Field(default=None, ge=0, le=6)
+    period_length_days: int | None = None
+    first_report_date: date | None = None
 
 
 class ProjectCreate(BaseModel):
@@ -269,16 +274,29 @@ def patch_project_meta(
             p.methodology = ProjectMethodology(body.methodology)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="Invalid methodology") from exc
-    if body.weekly_report_anchor_weekday is not None:
-        p.weekly_report_anchor_weekday = body.weekly_report_anchor_weekday
-    if body.weekly_report_cutoff_offset_days is not None:
-        p.weekly_report_cutoff_offset_days = body.weekly_report_cutoff_offset_days
+    rw = body.report_weekday if body.report_weekday is not None else body.weekly_report_anchor_weekday
+    pl = (
+        body.period_length_days
+        if body.period_length_days is not None
+        else body.weekly_report_cutoff_offset_days
+    )
+    fr = (
+        body.first_report_date
+        if body.first_report_date is not None
+        else body.weekly_report_first_anchor_date
+    )
+    if rw is not None:
+        p.weekly_report_anchor_weekday = rw
+    if pl is not None:
+        p.weekly_report_cutoff_offset_days = pl
     meta = body.model_dump(exclude_unset=True)
-    if "weekly_report_first_anchor_date" in meta:
+    if fr is not None:
+        meta.setdefault("weekly_report_first_anchor_date", fr)
+    if "weekly_report_first_anchor_date" in meta or fr is not None:
         from app.services.report_calendar import validate_weekly_first_anchor_date
         from app.services.schedule_window import project_report_start_date
 
-        first = meta["weekly_report_first_anchor_date"]
+        first = fr if fr is not None else meta.get("weekly_report_first_anchor_date")
         if first is not None:
             project_start = project_report_start_date(db, p)
             wd = body.weekly_report_anchor_weekday
@@ -286,8 +304,48 @@ def patch_project_meta(
                 wd = p.weekly_report_anchor_weekday
             validate_weekly_first_anchor_date(first, project_start, wd)
         p.weekly_report_first_anchor_date = first
+    changed = list(body.model_dump(exclude_unset=True).keys())
+    if changed:
+        log_activity(
+            db,
+            project_id,
+            user.id,
+            "project.updated",
+            {"fields": changed},
+        )
     db.commit()
     return {"updated": True}
+
+
+@router.get("/{project_id}/activity-log")
+def list_project_activity_log(
+    project_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    codes: set[str] = Depends(get_permission_codes),
+):
+    ensure_project_read(project_id, user, codes, db)
+    rows = db.execute(
+        select(ActivityLog, User)
+        .outerjoin(User, ActivityLog.user_id == User.id)
+        .where(ActivityLog.project_id == project_id)
+        .order_by(ActivityLog.created_at.desc())
+        .limit(300)
+    ).all()
+    items = []
+    for log_row, u in rows:
+        items.append(
+            {
+                "id": log_row.id,
+                "action": log_row.action,
+                "action_label": action_label(log_row.action),
+                "detail": log_row.detail or {},
+                "created_at": log_row.created_at.isoformat() if log_row.created_at else None,
+                "user_name": u.name if u else None,
+                "user_email": u.email if u else None,
+            }
+        )
+    return {"items": items}
 
 
 @router.get("/{project_id}")
@@ -331,6 +389,11 @@ def get_project(
         "weekly_report_first_anchor_date": p.weekly_report_first_anchor_date.isoformat()
         if p.weekly_report_first_anchor_date
         else None,
+        "report_weekday": p.weekly_report_anchor_weekday,
+        "period_length_days": p.weekly_report_cutoff_offset_days,
+        "first_report_date": p.weekly_report_first_anchor_date.isoformat()
+        if p.weekly_report_first_anchor_date
+        else None,
         "clickup_provision_status": p.clickup_provision_status,
         "kickoff_timeline_confirmed_at": p.kickoff_timeline_confirmed_at.isoformat()
         if p.kickoff_timeline_confirmed_at
@@ -371,6 +434,7 @@ def patch_bast(
     p.bast_checklist = normalize_bast_checklist(body.bast_checklist)
     if body.weekly_notes is not None:
         p.weekly_notes = body.weekly_notes
+    log_activity(db, project_id, user.id, "bast.updated", {})
     db.commit()
     return {"bast_checklist": p.bast_checklist}
 

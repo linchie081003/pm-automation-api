@@ -130,11 +130,17 @@ def timeline_report_bounds(
     return schedule_bounds_with_source(db, project_id)
 
 
-def project_report_start_date(db: Session, project: Project) -> date | None:
+def project_report_start_date(db: Session, project: Project | int) -> date | None:
     """Mulai weekly report / S-curve = tanggal start proyek (input Timeline)."""
-    if project.planned_start_date:
-        return project.planned_start_date
-    start, _, _ = timeline_report_bounds(db, project.id)
+    if isinstance(project, int):
+        project_id = project
+        p = db.get(Project, project_id)
+    else:
+        p = project
+        project_id = project.id
+    if p and p.planned_start_date:
+        return p.planned_start_date
+    start, _, _ = timeline_report_bounds(db, project_id)
     return start
 
 

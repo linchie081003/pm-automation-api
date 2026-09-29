@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import json
-import time
 from datetime import date
-from pathlib import Path
 
 from sqlalchemy.orm import Session
 
@@ -47,27 +44,38 @@ def resolve_clickup_baseline_dates(
     caches_by_tid: dict[str, ClickUpTaskCache],
     ms_by_id: dict[int, Milestone],
     ms_by_clickup: dict[str, Milestone],
+    pdc_parent: Milestone | None = None,
 ) -> tuple[date | None, date | None]:
-    """Subtask → always parent span; root task → own ClickUp or phase baseline."""
-    if parent_clickup_task_id:
-        parent = caches_by_tid.get(parent_clickup_task_id)
-        if parent:
-            ps, pe, _ = _parent_date_span(
-                parent, ms_by_id=ms_by_id, ms_by_clickup=ms_by_clickup
-            )
-            inherited = _span_from_bounds(ps, pe)
-            if inherited[0] and inherited[1]:
-                return inherited
+    """Subtask → parent PDC/task span only (never subtask's own ClickUp dates)."""
+    is_subtask = bool(parent_clickup_task_id or cache.parent_task_id or pdc_parent)
+    if is_subtask:
+        if pdc_parent and (pdc_parent.start_date or pdc_parent.target_date):
+            span = _span_from_bounds(pdc_parent.start_date, pdc_parent.target_date)
+            if span[0] or span[1]:
+                return span
+        parent_tid = parent_clickup_task_id or cache.parent_task_id
+        if parent_tid:
+            parent = caches_by_tid.get(parent_tid)
+            if parent:
+                ps, pe, _ = _parent_date_span(
+                    parent, ms_by_id=ms_by_id, ms_by_clickup=ms_by_clickup
+                )
+                span = _span_from_bounds(ps, pe)
+                if span[0] or span[1]:
+                    return span
+        inherited = _span_from_bounds(phase.start_date, phase.target_date)
+        if inherited[0] or inherited[1]:
+            return inherited
+        return None, None
     linked = ms_by_clickup.get(cache.clickup_task_id or "")
     if linked and (linked.start_date or linked.target_date):
         return _span_from_bounds(linked.start_date, linked.target_date)
     own = _span_from_bounds(*_cache_date_span(cache))
-    if own[0] and own[1]:
+    if own[0] or own[1]:
         return own
-    if not parent_clickup_task_id:
-        inherited = _span_from_bounds(phase.start_date, phase.target_date)
-        if inherited[0] and inherited[1]:
-            return inherited
+    inherited = _span_from_bounds(phase.start_date, phase.target_date)
+    if inherited[0] or inherited[1]:
+        return inherited
     return own
 
 
@@ -133,6 +141,9 @@ def _extra_row_dict(
 ) -> dict:
     pct = task_cache_progress_pct(cache, subtasks=cu_subtasks if cu_subtasks else None)
     by_tid = caches_by_tid or {}
+    pdc_parent = None
+    if parent_clickup_task_id and ms_by_clickup:
+        pdc_parent = ms_by_clickup.get(parent_clickup_task_id)
     t_start, t_end = resolve_clickup_baseline_dates(
         cache,
         phase=phase,
@@ -140,6 +151,7 @@ def _extra_row_dict(
         caches_by_tid=by_tid,
         ms_by_id=ms_by_id or {},
         ms_by_clickup=ms_by_clickup or {},
+        pdc_parent=pdc_parent,
     )
     dur = business_duration_days(t_start, t_end, db)
     inherited_dates = bool(parent_clickup_task_id and t_start and t_end)
@@ -194,7 +206,6 @@ def merge_timeline_with_clickup(
     pdc_ids = {r["id"] for r in pdc_rows if isinstance(r.get("id"), int) and r["id"] > 0}
 
     phases = timeline_phases(milestones)
-    _debug_log = Path(__file__).resolve().parents[3] / "debug-aa7388.log"
     row_by_id = {r["id"]: r for r in pdc_rows}
 
     def pdc_row(mid: int) -> dict | None:
@@ -293,16 +304,19 @@ def merge_timeline_with_clickup(
                 "clickup_progress_pct": row_pct,
             }
             p_cu = milestone_cache.get(m.id)
-            needs_dates = p_cu and (
+            parent_m = by_id.get(m.parent_id) if m.parent_id else None
+            is_clickup_subtask = bool(
                 m.item_type == TimelineItemType.subtask
+                or (p_cu and p_cu.parent_task_id)
+            )
+            needs_dates = p_cu and (
+                is_clickup_subtask
                 or (not patched.get("start_date") and not patched.get("target_date"))
             )
             if needs_dates:
-                parent_tid = (
-                    p_cu.parent_task_id
-                    if m.item_type == TimelineItemType.subtask
-                    else None
-                )
+                parent_tid = p_cu.parent_task_id if is_clickup_subtask else None
+                if not parent_tid and parent_m and parent_m.clickup_task_id:
+                    parent_tid = parent_m.clickup_task_id
                 ts, te = resolve_clickup_baseline_dates(
                     p_cu,
                     phase=phase,
@@ -310,6 +324,7 @@ def merge_timeline_with_clickup(
                     caches_by_tid=caches_by_tid,
                     ms_by_id=ms_by_id,
                     ms_by_clickup=ms_by_clickup,
+                    pdc_parent=parent_m if is_clickup_subtask else None,
                 )
                 if not ts and not te and m.item_type == TimelineItemType.task:
                     ts, te = _span_from_bounds(phase.start_date, phase.target_date)
@@ -333,7 +348,7 @@ def merge_timeline_with_clickup(
                     )
                     patched["duration_days"] = dur
                     patched["display_duration_days"] = dur
-                    if m.item_type == TimelineItemType.subtask and parent_tid:
+                    if is_clickup_subtask and parent_tid:
                         patched["timeline_dates_inherited"] = True
             elif patched.get("start_date") and patched.get("target_date"):
                 ts = date.fromisoformat(str(patched["start_date"])[:10])
@@ -360,27 +375,6 @@ def merge_timeline_with_clickup(
                     )
 
         cu_roots = _clickup_roots_for_phase(phase, milestones, caches, linked_cu)
-        # #region agent log
-        try:
-            payload = {
-                "sessionId": "aa7388",
-                "timestamp": int(time.time() * 1000),
-                "location": "timeline_display.py",
-                "message": "phase_clickup_roots",
-                "data": {
-                    "phase_id": phase.id,
-                    "phase_name": phase.name,
-                    "clickup_list_id": phase.clickup_list_id,
-                    "root_count": len(cu_roots),
-                    "root_names": [r.name for r in cu_roots[:8]],
-                },
-                "hypothesisId": "E",
-            }
-            with open(_debug_log, "a", encoding="utf-8") as fh:
-                fh.write(json.dumps(payload) + "\n")
-        except OSError:
-            pass
-        # #endregion
         for i, root in enumerate(cu_roots):
             append_clickup_tree(
                 root,
