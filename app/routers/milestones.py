@@ -221,6 +221,12 @@ def patch_milestone(
     if not m or m.project_id != project_id:
         raise HTTPException(status_code=404, detail="Not found")
     data = body.model_dump(exclude_unset=True)
+    if m.status == MilestoneStatus.done and "weight_pct" in data:
+        if data["weight_pct"] is not None and float(data["weight_pct"]) != float(m.weight_pct):
+            raise HTTPException(
+                status_code=400,
+                detail="Bobot fase selesai terkunci (EVM) — tidak boleh diubah.",
+            )
     if not kickoff_milestones_editable(project):
         allowed = {"status", "actual_date"}
         if set(data.keys()) - allowed:

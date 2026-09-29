@@ -366,16 +366,39 @@ def copy_milestones_to_baseline(
     baseline: ScheduleBaseline,
     milestones: list[Milestone],
 ) -> None:
-    for m in milestones:
-        db.add(
-            ScheduleBaselineMilestone(
+    """Copy full live milestone tree into baseline snapshot rows."""
+    from app.models import TimelineItemType
+
+    ordered = sorted(milestones, key=lambda x: (x.sort_order or 0, x.id or 0))
+    id_map: dict[int, int] = {}
+    pending = list(ordered)
+    while pending:
+        progress = False
+        next_pending: list[Milestone] = []
+        for m in pending:
+            if m.parent_id and m.parent_id not in id_map:
+                next_pending.append(m)
+                continue
+            dup = ScheduleBaselineMilestone(
                 baseline_id=baseline.id,
                 milestone_id=m.id,
                 name=m.name,
+                start_date=m.start_date,
                 target_date=m.target_date,
                 weight_pct=m.weight_pct,
+                is_payment_milestone=m.is_payment_milestone,
+                duration_days=m.duration_days,
+                item_type=m.item_type or TimelineItemType.milestone,
+                parent_id=id_map.get(m.parent_id) if m.parent_id else None,
+                sort_order=m.sort_order or 0,
             )
-        )
+            db.add(dup)
+            db.flush()
+            id_map[m.id] = dup.id
+            progress = True
+        if not progress:
+            break
+        pending = next_pending
 
 
 def create_initial_baseline(

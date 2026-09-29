@@ -80,6 +80,7 @@ app.include_router(change_requests.router, prefix="/api")
 app.include_router(project_tasks.router, prefix="/api")
 app.include_router(reminders.router, prefix="/api")
 app.include_router(rebaseline_approvals.router, prefix="/api")
+app.include_router(rebaseline_approvals.global_router, prefix="/api")
 app.include_router(evaluations.router, prefix="/api")
 
 

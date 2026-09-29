@@ -1,0 +1,341 @@
+"""Rebaseline: diff baseline vs proposed phases, validation, apply on approve."""
+from __future__ import annotations
+
+from datetime import date
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.models import (
+    Milestone,
+    MilestoneStatus,
+    ScheduleBaselineMilestone,
+    TimelineItemType,
+)
+from app.services.schedule import get_current_baseline
+
+RebaselineCategory = Literal["delay", "scope_change"]
+
+WEIGHT_TOTAL_TOLERANCE = 0.01
+
+
+class ProposedPhaseIn(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    start_date: date | None = None
+    target_date: date | None = None
+    weight_pct: float = 0.0
+    milestone_id: int | None = None
+    client_key: str | None = None
+    sort_order: int = 0
+
+
+class PhaseSnapshot(BaseModel):
+    name: str
+    start_date: date | None = None
+    target_date: date | None = None
+    weight_pct: float = 0.0
+    milestone_id: int | None = None
+    client_key: str | None = None
+    sort_order: int = 0
+
+    def model_dump_jsonable(self) -> dict[str, Any]:
+        d = self.model_dump()
+        for k in ("start_date", "target_date"):
+            if d[k] is not None:
+                d[k] = d[k].isoformat()
+        return d
+
+
+def _iso(d: date | None) -> str | None:
+    return d.isoformat() if d else None
+
+
+def _date_pair_changed(a: date | None, b: date | None) -> bool:
+    return a != b
+
+
+def _float_changed(a: float, b: float) -> bool:
+    return round(float(a or 0), 4) != round(float(b or 0), 4)
+
+
+def load_baseline_phases(db: Session, project_id: int) -> tuple[int | None, list[PhaseSnapshot]]:
+    baseline = get_current_baseline(db, project_id)
+    if not baseline:
+        return None, []
+    rows = list(
+        db.scalars(
+            select(ScheduleBaselineMilestone)
+            .where(
+                ScheduleBaselineMilestone.baseline_id == baseline.id,
+                ScheduleBaselineMilestone.item_type == TimelineItemType.phase,
+            )
+            .order_by(ScheduleBaselineMilestone.sort_order, ScheduleBaselineMilestone.id)
+        ).all()
+    )
+    phases = [
+        PhaseSnapshot(
+            name=r.name,
+            start_date=r.start_date,
+            target_date=r.target_date,
+            weight_pct=float(r.weight_pct or 0),
+            milestone_id=r.milestone_id,
+            sort_order=r.sort_order or 0,
+        )
+        for r in rows
+    ]
+    return baseline.version, phases
+
+
+def load_live_phase_seed(db: Session, project_id: int) -> list[PhaseSnapshot]:
+    rows = list(
+        db.scalars(
+            select(Milestone)
+            .where(
+                Milestone.project_id == project_id,
+                Milestone.item_type == TimelineItemType.phase,
+            )
+            .order_by(Milestone.sort_order, Milestone.id)
+        ).all()
+    )
+    return [
+        PhaseSnapshot(
+            name=r.name,
+            start_date=r.start_date,
+            target_date=r.target_date,
+            weight_pct=float(r.weight_pct or 0),
+            milestone_id=r.id,
+            sort_order=r.sort_order or 0,
+        )
+        for r in rows
+    ]
+
+
+def normalize_proposed_phases(raw: list[ProposedPhaseIn]) -> list[PhaseSnapshot]:
+    out: list[PhaseSnapshot] = []
+    for i, p in enumerate(raw):
+        out.append(
+            PhaseSnapshot(
+                name=p.name.strip(),
+                start_date=p.start_date,
+                target_date=p.target_date,
+                weight_pct=float(p.weight_pct or 0),
+                milestone_id=p.milestone_id,
+                client_key=p.client_key,
+                sort_order=p.sort_order if p.sort_order else i,
+            )
+        )
+    return out
+
+
+def _baseline_by_milestone_id(baseline: list[PhaseSnapshot]) -> dict[int, PhaseSnapshot]:
+    return {p.milestone_id: p for p in baseline if p.milestone_id is not None}
+
+
+def _proposed_by_milestone_id(proposed: list[PhaseSnapshot]) -> dict[int, PhaseSnapshot]:
+    return {p.milestone_id: p for p in proposed if p.milestone_id is not None}
+
+
+def compute_phase_diff(
+    baseline: list[PhaseSnapshot], proposed: list[PhaseSnapshot]
+) -> dict[str, Any]:
+    base_ids = {p.milestone_id for p in baseline if p.milestone_id is not None}
+    prop_ids = {p.milestone_id for p in proposed if p.milestone_id is not None}
+    base_map = _baseline_by_milestone_id(baseline)
+    prop_map = _proposed_by_milestone_id(proposed)
+
+    added: list[dict[str, Any]] = []
+    for p in proposed:
+        if p.milestone_id is None or p.milestone_id not in base_ids:
+            added.append(p.model_dump_jsonable())
+
+    removed: list[dict[str, Any]] = []
+    for p in baseline:
+        if p.milestone_id is not None and p.milestone_id not in prop_ids:
+            removed.append(p.model_dump_jsonable())
+
+    modified: list[dict[str, Any]] = []
+    for mid in sorted(base_ids & prop_ids):
+        b, pr = base_map[mid], prop_map[mid]
+        entry: dict[str, Any] = {"milestone_id": mid, "name": pr.name}
+        changed = False
+        if _date_pair_changed(b.start_date, pr.start_date):
+            entry["start_date"] = {"from": _iso(b.start_date), "to": _iso(pr.start_date)}
+            changed = True
+        if _date_pair_changed(b.target_date, pr.target_date):
+            entry["target_date"] = {"from": _iso(b.target_date), "to": _iso(pr.target_date)}
+            changed = True
+        if _float_changed(b.weight_pct, pr.weight_pct):
+            entry["weight_pct"] = {"from": b.weight_pct, "to": pr.weight_pct}
+            changed = True
+        if b.name.strip() != pr.name.strip():
+            entry["name_change"] = {"from": b.name, "to": pr.name}
+            changed = True
+        if changed:
+            modified.append(entry)
+
+    return {"added": added, "removed": removed, "modified": modified}
+
+
+def build_presentation(category: RebaselineCategory, diff: dict[str, Any]) -> dict[str, Any]:
+    warnings: list[str] = []
+    has_structure = bool(diff.get("added") or diff.get("removed"))
+    has_weight = any("weight_pct" in m for m in diff.get("modified", []))
+    has_dates = any(
+        "target_date" in m or "start_date" in m for m in diff.get("modified", [])
+    )
+
+    if category == "delay":
+        primary = ["dates"]
+        if has_structure or has_weight:
+            warnings.append(
+                "Perubahan ini terlihat seperti perubahan scope, bukan keterlambatan murni."
+            )
+    else:
+        primary = ["structure_weights"]
+        if has_dates and diff.get("modified"):
+            warnings.append(
+                "Pergeseran tanggal fase lain dapat menjadi efek wajar redistribusi scope."
+            )
+
+    return {"primary_sections": primary, "cross_category_warnings": warnings}
+
+
+def validate_rebaseline_proposal(
+    db: Session,
+    project_id: int,
+    baseline: list[PhaseSnapshot],
+    proposed: list[PhaseSnapshot],
+    diff: dict[str, Any],
+) -> dict[str, list[str]]:
+    blocking: list[str] = []
+    warnings: list[str] = []
+
+    total = sum(p.weight_pct for p in proposed)
+    if abs(total - 100.0) > WEIGHT_TOTAL_TOLERANCE:
+        blocking.append(f"Total bobot fase harus 100% (saat ini {total:.2f}%).")
+
+    live_phases = {
+        m.id: m
+        for m in db.scalars(
+            select(Milestone).where(
+                Milestone.project_id == project_id,
+                Milestone.item_type == TimelineItemType.phase,
+            )
+        ).all()
+    }
+    base_map = _baseline_by_milestone_id(baseline)
+    prop_map = _proposed_by_milestone_id(proposed)
+
+    for mid, live in live_phases.items():
+        if live.status != MilestoneStatus.done:
+            continue
+        if mid in prop_map and mid in base_map:
+            if _float_changed(base_map[mid].weight_pct, prop_map[mid].weight_pct):
+                blocking.append(
+                    f"Bobot fase selesai terkunci (EVM): «{live.name}» tidak boleh diubah."
+                )
+        for rem in diff.get("removed", []):
+            if rem.get("milestone_id") == mid:
+                blocking.append(
+                    f"Fase selesai «{live.name}» tidak boleh dihapus dari baseline."
+                )
+
+    # Weight increases must be offset by decreases on open phases (live status)
+    increases = 0.0
+    decreases = 0.0
+    for mid in base_map.keys() & prop_map.keys():
+        live = live_phases.get(mid)
+        if live and live.status == MilestoneStatus.done:
+            continue
+        b_w = base_map[mid].weight_pct
+        p_w = prop_map[mid].weight_pct
+        delta = p_w - b_w
+        if delta > WEIGHT_TOTAL_TOLERANCE:
+            increases += delta
+        elif delta < -WEIGHT_TOTAL_TOLERANCE:
+            decreases += -delta
+    for add in diff.get("added", []):
+        increases += float(add.get("weight_pct") or 0)
+
+    if increases > WEIGHT_TOTAL_TOLERANCE and decreases + WEIGHT_TOTAL_TOLERANCE < increases:
+        blocking.append(
+            "Redistribusi bobot: penambahan bobot harus diambil dari penurunan fase yang masih open."
+        )
+
+    if not proposed and baseline:
+        blocking.append("Usulan fase tidak boleh kosong jika baseline memiliki fase.")
+
+    return {"blocking_errors": blocking, "warnings": warnings}
+
+
+def build_proposed_changes_payload(
+    db: Session,
+    project_id: int,
+    category: RebaselineCategory,
+    effective_from: date,
+    proposed: list[PhaseSnapshot],
+) -> dict[str, Any]:
+    baseline_version, baseline = load_baseline_phases(db, project_id)
+    diff = compute_phase_diff(baseline, proposed)
+    presentation = build_presentation(category, diff)
+    validation = validate_rebaseline_proposal(db, project_id, baseline, proposed, diff)
+    return {
+        "category": category,
+        "effective_from": effective_from.isoformat(),
+        "baseline_version": baseline_version,
+        "proposed_phases": [p.model_dump_jsonable() for p in proposed],
+        "diff": diff,
+        "presentation": presentation,
+        "validation": validation,
+    }
+
+
+def apply_proposed_phases_to_live(
+    db: Session, project_id: int, proposed_phases: list[dict[str, Any]]
+) -> None:
+    """Apply phase-level proposal to live milestones (children unchanged in v1)."""
+    existing = list(
+        db.scalars(
+            select(Milestone).where(
+                Milestone.project_id == project_id,
+                Milestone.item_type == TimelineItemType.phase,
+            )
+        ).all()
+    )
+    by_id = {m.id: m for m in existing}
+    proposed_ids = {
+        p["milestone_id"] for p in proposed_phases if p.get("milestone_id") is not None
+    }
+
+    for p in proposed_phases:
+        mid = p.get("milestone_id")
+        start_s = p.get("start_date")
+        target_s = p.get("target_date")
+        start_d = date.fromisoformat(start_s[:10]) if start_s else None
+        target_d = date.fromisoformat(target_s[:10]) if target_s else None
+        if mid and mid in by_id:
+            m = by_id[mid]
+            m.name = p["name"]
+            m.start_date = start_d
+            m.target_date = target_d
+            m.weight_pct = float(p.get("weight_pct") or 0)
+            m.sort_order = int(p.get("sort_order") or 0)
+        else:
+            m = Milestone(
+                project_id=project_id,
+                name=p["name"],
+                start_date=start_d,
+                target_date=target_d,
+                weight_pct=float(p.get("weight_pct") or 0),
+                item_type=TimelineItemType.phase,
+                sort_order=int(p.get("sort_order") or 0),
+                status=MilestoneStatus.open,
+            )
+            db.add(m)
+            db.flush()
+
+    for m in existing:
+        if m.id not in proposed_ids:
+            db.delete(m)
