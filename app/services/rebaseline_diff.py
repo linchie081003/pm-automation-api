@@ -112,6 +112,81 @@ def load_live_phase_seed(db: Session, project_id: int) -> list[PhaseSnapshot]:
     ]
 
 
+def _phase_lifecycle_bucket(phase: Milestone, clickup_workflow: str) -> str:
+    if phase.status == MilestoneStatus.done or clickup_workflow == "COMPLETED":
+        return "closed"
+    if clickup_workflow == "IN PROGRESS":
+        return "in_progress"
+    return "open"
+
+
+def load_rebaseline_phase_guide(db: Session, project_id: int) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Live phase status for rebaseline UI (PDC + ClickUp workflow)."""
+    from app.models import ClickUpTaskCache
+    from app.services.progress import (
+        build_clickup_lookups,
+        clickup_status_mapping_context,
+        phase_workflow_status,
+    )
+
+    milestones = list(
+        db.scalars(select(Milestone).where(Milestone.project_id == project_id)).all()
+    )
+    caches = list(
+        db.scalars(
+            select(ClickUpTaskCache).where(ClickUpTaskCache.project_id == project_id)
+        ).all()
+    )
+    phases = [m for m in milestones if m.item_type == TimelineItemType.phase]
+    rows: list[dict[str, Any]] = []
+    with clickup_status_mapping_context(db):
+        tasks_by_id, milestone_cache = build_clickup_lookups(milestones, caches)
+        for p in sorted(phases, key=lambda x: (x.sort_order or 0, x.id or 0)):
+            wf = phase_workflow_status(
+                p, milestones, tasks_by_id, milestone_cache, caches=caches
+            )
+            lifecycle = _phase_lifecycle_bucket(p, wf)
+            can_delete = lifecycle == "open"
+            can_edit_weight = p.status != MilestoneStatus.done
+            rows.append(
+                {
+                    "milestone_id": p.id,
+                    "name": p.name,
+                    "weight_pct": float(p.weight_pct or 0),
+                    "pdc_status": p.status.value,
+                    "clickup_workflow": wf,
+                    "lifecycle": lifecycle,
+                    "can_delete": can_delete,
+                    "can_edit_weight": can_edit_weight,
+                }
+            )
+
+    adjustable = [
+        {
+            "milestone_id": r["milestone_id"],
+            "name": r["name"],
+            "weight_pct": r["weight_pct"],
+            "lifecycle": r["lifecycle"],
+        }
+        for r in rows
+        if r["can_edit_weight"]
+    ]
+    summary = {
+        "open_phase_ids": [r["milestone_id"] for r in rows if r["lifecycle"] == "open"],
+        "in_progress_phase_ids": [
+            r["milestone_id"] for r in rows if r["lifecycle"] == "in_progress"
+        ],
+        "closed_phase_ids": [r["milestone_id"] for r in rows if r["lifecycle"] == "closed"],
+        "adjustable_weights": adjustable,
+    }
+    return rows, summary
+
+
+def live_phase_lifecycle_by_id(db: Session, project_id: int) -> dict[int, str]:
+    guide, _ = load_rebaseline_phase_guide(db, project_id)
+    return {int(r["milestone_id"]): str(r["lifecycle"]) for r in guide if r.get("milestone_id")}
+
+
 def normalize_proposed_phases(raw: list[ProposedPhaseIn]) -> list[PhaseSnapshot]:
     out: list[PhaseSnapshot] = []
     for i, p in enumerate(raw):
@@ -208,6 +283,8 @@ def validate_rebaseline_proposal(
     baseline: list[PhaseSnapshot],
     proposed: list[PhaseSnapshot],
     diff: dict[str, Any],
+    *,
+    category: RebaselineCategory | None = None,
 ) -> dict[str, list[str]]:
     blocking: list[str] = []
     warnings: list[str] = []
@@ -225,21 +302,37 @@ def validate_rebaseline_proposal(
             )
         ).all()
     }
+    lifecycle_by_id = live_phase_lifecycle_by_id(db, project_id)
     base_map = _baseline_by_milestone_id(baseline)
     prop_map = _proposed_by_milestone_id(proposed)
 
+    if category == "scope_change" and not diff.get("added"):
+        blocking.append(
+            "Perubahan scope wajib memuat minimal satu fase baru dalam usulan timeline."
+        )
+
     for mid, live in live_phases.items():
-        if live.status != MilestoneStatus.done:
-            continue
+        lifecycle = lifecycle_by_id.get(mid, "open")
         if mid in prop_map and mid in base_map:
-            if _float_changed(base_map[mid].weight_pct, prop_map[mid].weight_pct):
+            if live.status == MilestoneStatus.done and _float_changed(
+                base_map[mid].weight_pct, prop_map[mid].weight_pct
+            ):
                 blocking.append(
                     f"Bobot fase selesai terkunci (EVM): «{live.name}» tidak boleh diubah."
                 )
+            if lifecycle == "in_progress" and _float_changed(
+                base_map[mid].weight_pct, prop_map[mid].weight_pct
+            ):
+                warnings.append(
+                    f"Fase «{live.name}» sedang in progress di ClickUp — pertimbangkan sync setelah rebaseline."
+                )
         for rem in diff.get("removed", []):
-            if rem.get("milestone_id") == mid:
+            if rem.get("milestone_id") != mid:
+                continue
+            if live.status == MilestoneStatus.done or lifecycle in ("closed", "in_progress"):
+                label = "selesai" if lifecycle == "closed" else "in progress / selesai"
                 blocking.append(
-                    f"Fase selesai «{live.name}» tidak boleh dihapus dari baseline."
+                    f"Fase «{live.name}» ({label}) tidak boleh dihapus dari usulan."
                 )
 
     # Weight increases must be offset by decreases on open phases (live status)
@@ -280,7 +373,10 @@ def build_proposed_changes_payload(
     baseline_version, baseline = load_baseline_phases(db, project_id)
     diff = compute_phase_diff(baseline, proposed)
     presentation = build_presentation(category, diff)
-    validation = validate_rebaseline_proposal(db, project_id, baseline, proposed, diff)
+    validation = validate_rebaseline_proposal(
+        db, project_id, baseline, proposed, diff, category=category
+    )
+    _, phase_summary = load_rebaseline_phase_guide(db, project_id)
     return {
         "category": category,
         "effective_from": effective_from.isoformat(),
@@ -289,6 +385,8 @@ def build_proposed_changes_payload(
         "diff": diff,
         "presentation": presentation,
         "validation": validation,
+        "phase_summary": phase_summary,
+        "weight_total_pct": round(sum(p.weight_pct for p in proposed), 4),
     }
 
 

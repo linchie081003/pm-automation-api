@@ -17,6 +17,7 @@ from app.services.rebaseline_diff import (
     build_proposed_changes_payload,
     load_baseline_phases,
     load_live_phase_seed,
+    load_rebaseline_phase_guide,
     normalize_proposed_phases,
 )
 from app.services.schedule import rebaseline_project
@@ -109,15 +110,34 @@ def rebaseline_preview(
     ensure_project_read(project_id, user, codes, db)
     baseline_version, baseline_phases = load_baseline_phases(db, project_id)
     seed = load_live_phase_seed(db, project_id)
+    phase_guide, phase_summary = load_rebaseline_phase_guide(db, project_id)
+    guide_by_id = {g["milestone_id"]: g for g in phase_guide}
+    seed_enriched: list[dict] = []
+    for p in seed:
+        row = p.model_dump_jsonable()
+        meta = guide_by_id.get(p.milestone_id)
+        if meta:
+            row["lifecycle"] = meta["lifecycle"]
+            row["can_delete"] = meta["can_delete"]
+            row["can_edit_weight"] = meta["can_edit_weight"]
+            row["clickup_workflow"] = meta["clickup_workflow"]
+            row["pdc_status"] = meta["pdc_status"]
+        seed_enriched.append(row)
     project = db.get(Project, project_id)
     return {
         "baseline_version": baseline_version,
         "baseline_phases": [p.model_dump_jsonable() for p in baseline_phases],
-        "seed_from_live": [p.model_dump_jsonable() for p in seed],
+        "seed_from_live": seed_enriched,
+        "phase_guide": phase_guide,
+        "phase_summary": phase_summary,
         "eligibility": {
             "delay": _delay_eligible(db, project_id) if project else False,
             "scope_change": _scope_change_eligible(project) if project else False,
         },
+        "clickup_note": (
+            "Progress actual mengikuti ClickUp. Setelah rebaseline disetujui, jalankan sync ClickUp "
+            "dan pastikan fase/task baru terhubung ke list atau task ClickUp agar progress tetap akurat."
+        ),
     }
 
 

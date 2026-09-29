@@ -69,7 +69,7 @@ def test_presentation_scope_notes_date_shifts():
     assert pres["cross_category_warnings"]
 
 
-def test_validate_total_weight_and_done_lock():
+def test_validate_total_weight_and_done_lock(monkeypatch):
     baseline = [
         PhaseSnapshot(name="Done", weight_pct=40, milestone_id=10),
         PhaseSnapshot(name="Open", weight_pct=60, milestone_id=11),
@@ -79,12 +79,6 @@ def test_validate_total_weight_and_done_lock():
         PhaseSnapshot(name="Open", weight_pct=65, milestone_id=11),
     ]
     diff = compute_phase_diff(baseline, proposed)
-
-    class DoneMilestone:
-        status = __import__("app.models", fromlist=["MilestoneStatus"]).MilestoneStatus.done
-
-    class OpenMilestone:
-        status = __import__("app.models", fromlist=["MilestoneStatus"]).MilestoneStatus.open
 
     class FakeScalars:
         def __init__(self, rows):
@@ -104,6 +98,10 @@ def test_validate_total_weight_and_done_lock():
                 ]
             )
 
+    monkeypatch.setattr(
+        "app.services.rebaseline_diff.live_phase_lifecycle_by_id",
+        lambda *_a, **_k: {10: "closed", 11: "open"},
+    )
     v = validate_rebaseline_proposal(FakeSession(), 1, baseline, proposed, diff)
     assert any("terkunci" in e for e in v["blocking_errors"])
 
@@ -114,3 +112,58 @@ def test_validate_total_weight_and_done_lock():
     diff_ok = compute_phase_diff(baseline, proposed_ok)
     v2 = validate_rebaseline_proposal(FakeSession(), 1, baseline, proposed_ok, diff_ok)
     assert not v2["blocking_errors"]
+
+
+def test_scope_change_requires_new_phase(monkeypatch):
+    baseline = [
+        PhaseSnapshot(name="A", weight_pct=100, milestone_id=1),
+    ]
+    proposed = [
+        PhaseSnapshot(name="A", weight_pct=100, milestone_id=1),
+    ]
+    diff = compute_phase_diff(baseline, proposed)
+
+    monkeypatch.setattr(
+        "app.services.rebaseline_diff.live_phase_lifecycle_by_id",
+        lambda *_a, **_k: {1: "open"},
+    )
+    v = validate_rebaseline_proposal(
+        __import__("unittest.mock").mock.MagicMock(),
+        1,
+        baseline,
+        proposed,
+        diff,
+        category="scope_change",
+    )
+    assert any("fase baru" in e.lower() for e in v["blocking_errors"])
+
+
+def test_cannot_remove_in_progress_phase(monkeypatch):
+    baseline = [
+        PhaseSnapshot(name="Run", weight_pct=100, milestone_id=5),
+    ]
+    proposed: list[PhaseSnapshot] = []
+    diff = compute_phase_diff(baseline, proposed)
+
+    class FakeSession:
+        def scalars(self, *_a, **_k):
+            from app.models import MilestoneStatus
+
+            class R:
+                def all(self):
+                    return [
+                        type(
+                            "M",
+                            (),
+                            {"id": 5, "name": "Run", "status": MilestoneStatus.open},
+                        )()
+                    ]
+
+            return R()
+
+    monkeypatch.setattr(
+        "app.services.rebaseline_diff.live_phase_lifecycle_by_id",
+        lambda *_a, **_k: {5: "in_progress"},
+    )
+    v = validate_rebaseline_proposal(FakeSession(), 1, baseline, proposed, diff)
+    assert any("tidak boleh dihapus" in e for e in v["blocking_errors"])
