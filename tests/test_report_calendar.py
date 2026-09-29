@@ -3,6 +3,7 @@ from datetime import date
 import pytest
 
 from app.services.report_calendar import (
+    active_open_report_date,
     display_period_day_count,
     extend_anchors_for_project_end,
     ensure_snapshot_active_week_only,
@@ -65,10 +66,16 @@ def test_extend_when_end_before_next_weekly():
     assert extended == [date(2026, 12, 10), date(2026, 12, 17)]
 
 
-def test_filter_report_dates_excludes_future():
-    dates = [date(2026, 10, 1), date(2026, 10, 8), date(2026, 10, 15)]
-    started = filter_anchors_through_active_week(dates, 3, date(2026, 10, 9))
-    assert started == [date(2026, 10, 1), date(2026, 10, 8)]
+def test_filter_report_dates_includes_open_trailing_period():
+    dates = [date(2026, 9, 25), date(2026, 10, 2), date(2026, 10, 9), date(2026, 10, 16)]
+    # 2026-09-29 = Selasa; weekday 4 (Jumat) → periode terbuka report_date 2026-10-02
+    started = filter_anchors_through_active_week(dates, 4, date(2026, 9, 29))
+    assert started == [date(2026, 9, 25), date(2026, 10, 2)]
+
+
+def test_active_open_report_date_trailing():
+    # Selasa 29 Sep → report_date aktif = Jumat 2 Okt
+    assert active_open_report_date(date(2026, 9, 29), 4) == date(2026, 10, 2)
 
 
 def test_ensure_snapshot_rejects_past_week():

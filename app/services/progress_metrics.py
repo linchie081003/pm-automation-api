@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models import ProgressSnapshot, ProgressSnapshotSource, Project
 from app.services.progress import resolve_actual_progress
-from app.services.report_calendar import report_date_on_or_before, resolve_report_period
+from app.services.report_calendar import active_open_report_date, resolve_report_period
 from app.services.schedule import compute_spi, planned_pct_as_of
 from app.services.schedule_window import kickoff_milestones, project_report_start_date
 
@@ -35,7 +35,7 @@ def active_report_week_context(
     today = date.today()
     explicit = as_of is not None
     ref = as_of or today
-    rd_ref = report_date_on_or_before(ref, project.weekly_report_anchor_weekday)
+    rd_ref = active_open_report_date(ref, project.weekly_report_anchor_weekday)
     pstart = project_report_start_date(db, project) if db else None
     report_date, period_start, status_date = resolve_report_period(
         project.weekly_report_anchor_weekday,

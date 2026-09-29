@@ -24,10 +24,16 @@ from app.services.schedule import (
 )
 from app.services.schedule_window import kickoff_milestones, project_report_start_date
 from app.services.progress import resolve_actual_progress
-from app.services.report_calendar import ensure_weekly_period_has_started, resolve_report_period
+from app.services.report_calendar import (
+    active_open_report_date,
+    ensure_weekly_period_has_started,
+    resolve_report_period,
+)
+from app.services.progress_metrics import snapshot_for_anchor_week
 from app.services.clickup import sync_project_tasks
 from app.services.templates.loader import copy_template
 from app.services.templates.placeholders import build_mapping, replace_in_pptx, replace_in_xlsx
+from app.services.weekly_report_pptx import build_weekly_report_pptx
 from app.services.yyyymmdd_report_excel import export_yyyymmdd_workbook
 
 
@@ -45,6 +51,93 @@ def _ensure_clickup_ready(db: Session, project: Project) -> None:
     )
     if not has_task:
         raise ValueError("Belum ada task ClickUp — sync gagal atau list kosong.")
+
+
+def _next_weekly_report_doc_version(
+    db: Session, project_id: int, stamp: str, code: str
+) -> int:
+    from app.models import Document
+
+    filenames = db.scalars(
+        select(Document.filename).where(
+            Document.project_id == project_id,
+            Document.filename.like(f"{stamp}_Weekly_Report_{code}%"),
+        )
+    ).all()
+    max_v = 0
+    for fn in filenames:
+        if "_v" not in fn:
+            max_v = max(max_v, 1)
+            continue
+        try:
+            tail = fn.rsplit("_v", 1)[-1]
+            max_v = max(max_v, int(tail.split(".")[0]))
+        except ValueError:
+            continue
+    return max_v + 1
+
+
+def _report_file_basename(stamp: str, code: str, version: int) -> str:
+    return f"{stamp}_Weekly_Report_{code}_v{version:02d}"
+
+
+def _resolve_preview_metrics(
+    db: Session,
+    project: Project,
+    report_date: date,
+    week_end: date,
+    existing: WeeklyReport | None,
+) -> tuple[float, float, float | None, dict, str, bool]:
+    """
+    Returns planned, actual, spi, health, metrics_source, matches_project_health.
+    """
+    snap = snapshot_for_anchor_week(db, project.id, report_date)
+    active_rd = active_open_report_date(date.today(), project.weekly_report_anchor_weekday)
+    is_active_period = report_date == active_rd
+
+    if existing and existing.frozen_metrics:
+        fm = existing.frozen_metrics
+        planned = float(fm.get("planned_pct", 0))
+        actual = float(fm.get("actual_pct", 0))
+        spi = fm.get("spi")
+        spi_f = float(spi) if spi is not None else compute_spi(actual, planned)
+        health = dict(fm.get("health") or {})
+        if not health:
+            health = compute_health(db, project.id, week_end)
+        return planned, actual, spi_f, health, "saved_report", False
+
+    frozen_sources = {
+        ProgressSnapshotSource.weekly_report,
+        ProgressSnapshotSource.manual_save,
+    }
+    if snap and snap.source in frozen_sources:
+        planned = float(snap.planned_cumulative_pct)
+        actual = float(snap.actual_cumulative_pct)
+        spi_f = float(snap.spi_at_week)
+        health = compute_health(db, project.id, week_end)
+        return planned, actual, spi_f, health, "snapshot", False
+
+    if is_active_period:
+        health = compute_health(db, project.id)
+        planned = float(health.get("planned_progress_pct") or 0)
+        actual = float(health.get("actual_progress_pct") or 0)
+        spi_f = health.get("spi")
+        if spi_f is None:
+            spi_f = compute_spi(actual, planned)
+        else:
+            spi_f = float(spi_f)
+        return planned, actual, spi_f, health, "active_live", True
+
+    plan_rows = kickoff_milestones(db, project.id)
+    if not plan_rows:
+        from app.services.schedule import planned_progress_rows
+
+        plan_rows = planned_progress_rows(db, project.id)
+    planned = planned_pct_as_of(plan_rows, week_end, db=db)
+    actual = resolve_actual_progress(db, project, week_end)
+    spi_f = compute_spi(actual, planned)
+    health = compute_health(db, project.id, week_end)
+    return float(planned), float(actual), spi_f, health, "computed_historical", False
 
 
 def preview_weekly_report(
@@ -76,16 +169,15 @@ def preview_weekly_report(
         )
     )
 
-    health = compute_health(db, project_id, week_end)
+    planned, actual, spi, health, metrics_source, matches_project_health = (
+        _resolve_preview_metrics(db, project, report_date, week_end, existing)
+    )
     baseline = baseline_for_date(db, project_id, week_end)
     plan_rows = kickoff_milestones(db, project_id)
     if not plan_rows:
         from app.services.schedule import planned_progress_rows
 
         plan_rows = planned_progress_rows(db, project_id)
-    planned = planned_pct_as_of(plan_rows, week_end, db=db)
-    actual = resolve_actual_progress(db, project, week_end)
-    spi = compute_spi(actual, planned)
 
     milestones = db.scalars(
         select(Milestone).where(Milestone.project_id == project_id)
@@ -125,8 +217,13 @@ def preview_weekly_report(
         "period_day_count": display_period_day_count(project.weekly_report_cutoff_offset_days),
         "status_date_report": health.get("status_date") or week_end.isoformat(),
         "generate_progress_pct": round(actual, 2),
+        "metrics_source": metrics_source,
+        "matches_project_health": matches_project_health,
         "already_exists": existing is not None,
         "existing_report_id": existing.id if existing else None,
+        "next_document_version": _next_weekly_report_doc_version(
+            db, project_id, week_start.strftime("%Y%m%d"), project.code
+        ),
         "project_code": project.code,
         "project_name": project.name,
         "baseline_version": baseline.version if baseline else None,
@@ -186,6 +283,8 @@ def generate_weekly_report(
     user_id: int,
     notes: str | None,
     mitigation_plan: str | None = None,
+    *,
+    regenerate: bool = False,
 ) -> WeeklyReport:
     project = db.get(Project, project_id)
     if not project:
@@ -210,13 +309,32 @@ def generate_weekly_report(
             WeeklyReport.week_start == week_start,
         )
     )
-    if existing:
+    if existing and not regenerate:
         return existing
 
-    snap = save_weekly_progress(
-        db, project_id, week_start, ProgressSnapshotSource.weekly_report
+    active_rd = active_open_report_date(date.today(), project.weekly_report_anchor_weekday)
+    if report_date == active_rd:
+        snap = save_weekly_progress(
+            db, project_id, week_start, ProgressSnapshotSource.weekly_report
+        )
+    else:
+        snap = snapshot_for_anchor_week(db, project_id, week_start)
+        if not snap:
+            raise ValueError(
+                "Snapshot progress untuk periode ini belum ada — tidak dapat generate dokumen."
+            )
+
+    planned, actual, spi, health, _, _ = _resolve_preview_metrics(
+        db, project, report_date, week_end, None
     )
-    health = compute_health(db, project_id, week_end)
+    if report_date == active_rd:
+        health = compute_health(db, project_id)
+        planned = float(health.get("planned_progress_pct") or planned)
+        actual = float(health.get("actual_progress_pct") or actual)
+        spi = health.get("spi") if health.get("spi") is not None else compute_spi(actual, planned)
+        snap.planned_cumulative_pct = planned
+        snap.actual_cumulative_pct = actual
+        snap.spi_at_week = float(spi) if spi is not None else 0.0
 
     milestones = db.scalars(
         select(Milestone).where(Milestone.project_id == project_id)
@@ -225,40 +343,64 @@ def generate_weekly_report(
         select(ClickUpTaskCache).where(ClickUpTaskCache.project_id == project_id)
     ).all()
     combined_notes = compose_weekly_report_notes(notes, mitigation_plan)
-    summary = {
-        "highlights": combined_notes or project.weekly_notes or "",
-        "mitigation_plan": (mitigation_plan or "").strip(),
-        "milestones": [{"name": m.name, "status": m.status.value} for m in milestones],
-        "task_count": len(tasks),
-    }
+
+    if existing and regenerate:
+        report = existing
+        summary = dict(report.summary or {})
+        summary.update(
+            {
+                "highlights": combined_notes or project.weekly_notes or "",
+                "mitigation_plan": (mitigation_plan or "").strip(),
+                "milestones": [{"name": m.name, "status": m.status.value} for m in milestones],
+                "task_count": len(tasks),
+            }
+        )
+        report.summary = summary
+    else:
+        summary = {
+            "highlights": combined_notes or project.weekly_notes or "",
+            "mitigation_plan": (mitigation_plan or "").strip(),
+            "milestones": [{"name": m.name, "status": m.status.value} for m in milestones],
+            "task_count": len(tasks),
+        }
+        report = WeeklyReport(
+            project_id=project_id,
+            week_start=week_start,
+            week_end=week_end,
+            baseline_version=snap.baseline_version,
+            summary=summary,
+            frozen_metrics={},
+            generated_by_id=user_id,
+        )
+        db.add(report)
+        db.flush()
+
     frozen = {
         "planned_pct": snap.planned_cumulative_pct,
         "actual_pct": snap.actual_cumulative_pct,
         "spi": snap.spi_at_week,
         "health": health,
     }
-
-    report = WeeklyReport(
-        project_id=project_id,
-        week_start=week_start,
-        week_end=week_end,
-        baseline_version=snap.baseline_version,
-        summary=summary,
-        frozen_metrics=frozen,
-        generated_by_id=user_id,
-    )
-    db.add(report)
-    db.flush()
+    report.frozen_metrics = frozen
+    report.baseline_version = snap.baseline_version
+    report.week_end = week_end
     snap.weekly_report_id = report.id
 
-    xlsx_path, pptx_path = _write_report_files(db, project, report, milestones, tasks)
+    stamp = report.week_start.strftime("%Y%m%d")
+    doc_version = _next_weekly_report_doc_version(db, project_id, stamp, project.code)
+    xlsx_path, pptx_path = _write_report_files(
+        db, project, report, milestones, tasks, file_version=doc_version
+    )
     report.xlsx_path = xlsx_path
     report.pptx_path = pptx_path
+    summary = dict(report.summary or {})
+    summary["document_version"] = doc_version
+    report.summary = summary
 
     from app.models import DocumentType
     from app.services.document_registry import register_file_as_document
 
-    stamp = report.week_start.strftime("%Y%m%d")
+    base = _report_file_basename(stamp, project.code, doc_version)
     if xlsx_path:
         register_file_as_document(
             db,
@@ -266,7 +408,7 @@ def generate_weekly_report(
             user_id,
             Path(xlsx_path),
             DocumentType.progress_report,
-            display_filename=f"{stamp}_Weekly_Report_{project.code}.xlsx",
+            display_filename=f"{base}.xlsx",
         )
     if pptx_path:
         register_file_as_document(
@@ -275,23 +417,24 @@ def generate_weekly_report(
             user_id,
             Path(pptx_path),
             DocumentType.progress_report,
-            display_filename=f"{stamp}_Weekly_Report_{project.code}.pptx",
+            display_filename=f"{base}.pptx",
         )
 
-    db.add(
-        ProjectHealthSnapshot(
-            project_id=project_id,
-            as_of_date=week_end,
-            planned_progress_pct=snap.planned_cumulative_pct,
-            actual_progress_pct=snap.actual_cumulative_pct,
-            spi=snap.spi_at_week,
-            rag_schedule=health["rag_schedule"],
-            rag_gap=health["rag_gap"],
-            rag_overall=health["rag_overall"],
-            baseline_version=snap.baseline_version,
-            weekly_report_id=report.id,
+    if not (existing and regenerate):
+        db.add(
+            ProjectHealthSnapshot(
+                project_id=project_id,
+                as_of_date=week_end,
+                planned_progress_pct=snap.planned_cumulative_pct,
+                actual_progress_pct=snap.actual_cumulative_pct,
+                spi=snap.spi_at_week,
+                rag_schedule=health["rag_schedule"],
+                rag_gap=health["rag_gap"],
+                rag_overall=health["rag_overall"],
+                baseline_version=snap.baseline_version,
+                weekly_report_id=report.id,
+            )
         )
-    )
     db.flush()
     return report
 
@@ -303,11 +446,18 @@ def _task_table(tasks) -> str:
 
 
 def _write_report_files(
-    db: Session, project: Project, report: WeeklyReport, milestones, tasks
+    db: Session,
+    project: Project,
+    report: WeeklyReport,
+    milestones,
+    tasks,
+    *,
+    file_version: int = 1,
 ) -> tuple[str, str]:
     out_dir = Path(settings.upload_dir) / "reports" / str(project.id)
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = report.week_start.strftime("%Y%m%d")
+    file_base = _report_file_basename(stamp, project.code, file_version)
     summary = report.summary or {}
     highlights = summary.get("highlights") or ""
     mitigation = summary.get("mitigation_plan") or ""
@@ -325,7 +475,7 @@ def _write_report_files(
         TASK_TABLE=_task_table(tasks),
     )
 
-    xlsx_dest = out_dir / f"{stamp}_Weekly_Report_{project.code}.xlsx"
+    xlsx_dest = out_dir / f"{file_base}.xlsx"
     pstart = project_report_start_date(db, project)
     _, _, week_end = resolve_report_period(
         project.weekly_report_anchor_weekday,
@@ -344,28 +494,39 @@ def _write_report_files(
             db=db,
             project=project,
             milestones=list(milestones),
-            anchor=anchor,
+            anchor=report.week_start,
             cut_off=week_end,
             planned_pct=planned,
             actual_pct=actual,
             spi=spi,
         )
-        _append_tasks_sheet(xlsx_dest, tasks)
     except FileNotFoundError:
         try:
             copy_template("weekly_report.xlsx", xlsx_dest)
             replace_in_xlsx(xlsx_dest, mapping)
             _append_tasks_sheet(xlsx_dest, tasks)
         except FileNotFoundError:
-            xlsx_dest = _write_fallback_xlsx(project, report, milestones, out_dir, stamp)
+            xlsx_dest = _write_fallback_xlsx(project, report, milestones, out_dir, file_base)
 
-    pptx_dest = out_dir / f"{stamp}_Weekly_Report_{project.code}.pptx"
+    pptx_dest = out_dir / f"{file_base}.pptx"
+    from app.models import ProjectPo, ProjectSph
+
+    sph = db.get(ProjectSph, project.id)
+    po = db.get(ProjectPo, project.id)
     try:
-        copy_template("weekly_report.pptx", pptx_dest)
-        replace_in_pptx(pptx_dest, mapping)
-    except FileNotFoundError:
-        pptx_dest = out_dir / f"{stamp}_Weekly_Report_{project.code}.pptx"
-        if not pptx_dest.exists():
+        build_weekly_report_pptx(
+            pptx_dest,
+            db=db,
+            project=project,
+            report=report,
+            sph=sph,
+            po=po,
+        )
+    except Exception:
+        try:
+            copy_template("weekly_report.pptx", pptx_dest)
+            replace_in_pptx(pptx_dest, mapping)
+        except FileNotFoundError:
             pptx_dest = None  # type: ignore
 
     return str(xlsx_dest), str(pptx_dest) if pptx_dest and pptx_dest.exists() else ""
@@ -385,8 +546,8 @@ def _append_tasks_sheet(path: Path, tasks) -> None:
     wb.save(str(path))
 
 
-def _write_fallback_xlsx(project, report, milestones, out_dir, stamp) -> Path:
-    fname = f"{stamp}_Weekly_Report_{project.code}.xlsx"
+def _write_fallback_xlsx(project, report, milestones, out_dir, file_base: str) -> Path:
+    fname = f"{file_base}.xlsx"
     path = out_dir / fname
     wb = Workbook()
     ws = wb.active

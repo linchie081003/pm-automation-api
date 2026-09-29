@@ -84,6 +84,7 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(255))
     client_name: Mapped[str] = mapped_column(String(255), default="")
     project_manager: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    project_brief: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     contract_value: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     po_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     po_due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)

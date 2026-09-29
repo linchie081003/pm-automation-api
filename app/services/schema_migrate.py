@@ -72,6 +72,7 @@ def ensure_phase_af_columns(engine: Engine) -> None:
         "ALTER TABLE project_sph ADD COLUMN IF NOT EXISTS sales_pic VARCHAR(255)",
         "ALTER TABLE project_sph ADD COLUMN IF NOT EXISTS estimated_start_date DATE",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_manager VARCHAR(255)",
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_brief TEXT",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS kickoff_timeline_confirmed_at TIMESTAMP",
         "ALTER TABLE milestones ADD COLUMN IF NOT EXISTS is_payment_milestone BOOLEAN DEFAULT FALSE",
         "ALTER TABLE milestones ADD COLUMN IF NOT EXISTS module VARCHAR(128)",

@@ -260,7 +260,6 @@ def list_report_anchors(
     from datetime import date
 
     from app.services.report_calendar import (
-        anchor_on_or_before,
         calendar_anchor_window,
         filter_anchors_through_active_week,
         first_schedule_anchor_date,
@@ -321,7 +320,6 @@ def list_report_anchors(
     out_started = [_anchor_row(a) for a in anchors_started]
     from app.services.progress_metrics import active_report_week_context
 
-    active_rd = anchor_on_or_before(today, project.weekly_report_anchor_weekday)
     active_report_date, active_period_start, active_status, status_date_report = (
         active_report_week_context(project, db=db)
     )

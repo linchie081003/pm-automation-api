@@ -19,6 +19,14 @@ anchor_on_or_before = report_date_on_or_before
 anchor_on_or_after = report_date_on_or_after
 
 
+def active_open_report_date(d: date, weekday: int) -> date:
+    """
+    Trailing: report_date (akhir periode) untuk minggu yang sedang berjalan.
+    Periode closed setelah report_date lewat; sebelum itu pakai report_date berikutnya ≥ d.
+    """
+    return report_date_on_or_after(d, weekday)
+
+
 def display_period_day_count(period_length_days: int) -> int:
     """Inclusive day count for UI (period_length_days=6 → 7 hari kalender)."""
     return max(1, int(period_length_days) + 1)
@@ -78,10 +86,7 @@ anchor_dates_between = report_dates_between
 
 
 def next_report_date_from_today(today: date, weekday: int) -> date:
-    prev = report_date_on_or_before(today, weekday)
-    if prev == today:
-        return today
-    return prev + timedelta(days=7)
+    return active_open_report_date(today, weekday)
 
 
 next_anchor_from_today = next_report_date_from_today
@@ -188,7 +193,7 @@ def filter_report_dates_through_active_week(
     if not report_dates:
         return []
     today = today or date.today()
-    active = report_date_on_or_before(today, weekday)
+    active = active_open_report_date(today, weekday)
     if report_dates[0] > active:
         return []
     return [d for d in report_dates if d <= active]
@@ -257,7 +262,7 @@ def ensure_snapshot_active_week_only(
     today: date | None = None,
 ) -> date:
     today = today or date.today()
-    active_rd = report_date_on_or_before(today, report_weekday)
+    active_rd = active_open_report_date(today, report_weekday)
     rd, _, _ = resolve_report_period(
         report_weekday,
         period_length_days,
@@ -284,16 +289,22 @@ def ensure_weekly_period_has_started(
     today: date | None = None,
 ) -> date:
     today = today or date.today()
-    active_rd = report_date_on_or_before(today, report_weekday)
-    rd, _, _ = resolve_report_period(
+    active_rd = active_open_report_date(today, report_weekday)
+    rd, period_start, _ = resolve_report_period(
         report_weekday,
         period_length_days,
         report_date,
         today,
+        project_start_date=None,
     )
     if rd > active_rd:
         raise ValueError(
             "Periode weekly report belum dimulai — pilih tanggal laporan pada atau sebelum "
             f"minggu aktif ({active_rd.isoformat()})."
+        )
+    if today < period_start:
+        raise ValueError(
+            "Periode weekly report belum dimulai — periode dimulai "
+            f"{period_start.isoformat()}."
         )
     return rd

@@ -56,6 +56,7 @@ class ProjectMetaPatch(BaseModel):
     po_due_date: date | None = None
     document_repo_url: str | None = None
     project_manager: str | None = None
+    project_brief: str | None = None
     methodology: str | None = None
     weekly_report_anchor_weekday: int | None = Field(default=None, ge=0, le=6)
     weekly_report_cutoff_offset_days: int | None = None
@@ -73,6 +74,7 @@ class ProjectCreate(BaseModel):
     sph_client: str | None = None
     sph_no: str | None = None
     project_manager: str | None = None
+    project_brief: str | None = None
     po_date: date | None = None
     contract_value: float | None = Field(default=None, ge=0)
 
@@ -97,6 +99,7 @@ class ProjectOut(BaseModel):
     status_date: str | None = None
     sph_no: str | None = None
     project_manager: str | None = None
+    project_brief: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -166,11 +169,13 @@ def create_project(
     if db.query(Project).filter(Project.code == code).first():
         raise HTTPException(status_code=400, detail="Project code exists")
     pm = (body.project_manager or "").strip() or None
+    brief = (body.project_brief or "").strip() or None
     p = Project(
         code=code,
         name=display_name,
         client_name=client,
         project_manager=pm,
+        project_brief=brief,
         po_date=body.po_date,
         contract_value=body.contract_value,
         owner_id=user.id,
@@ -269,6 +274,8 @@ def patch_project_meta(
         sph = db.get(ProjectSph, project_id)
         if sph:
             sph.pic_user_name = p.project_manager
+    if body.project_brief is not None:
+        p.project_brief = body.project_brief.strip() or None
     if body.methodology is not None:
         try:
             p.methodology = ProjectMethodology(body.methodology)
@@ -370,6 +377,7 @@ def get_project(
         "name": p.name,
         "client_name": p.client_name,
         "project_manager": p.project_manager,
+        "project_brief": p.project_brief,
         "sph_no": sph.sph_no if sph else None,
         "po_date": p.po_date.isoformat() if p.po_date else None,
         "po_due_date": p.po_due_date.isoformat() if p.po_due_date else None,

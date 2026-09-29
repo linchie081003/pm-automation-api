@@ -392,3 +392,64 @@ def merge_timeline_with_clickup(
             append_row({**r, "depth": 0, "expandable": False})
 
     return display
+
+
+def _milestone_pdc_row_dict(m: Milestone) -> dict:
+    return {
+        "id": m.id,
+        "name": m.name,
+        "module": m.module,
+        "start_date": m.start_date.isoformat() if m.start_date else None,
+        "target_date": m.target_date.isoformat() if m.target_date else None,
+        "weight_pct": float(m.weight_pct or 0),
+        "status": m.status.value,
+        "actual_date": m.actual_date.isoformat() if m.actual_date else None,
+        "is_payment_milestone": bool(m.is_payment_milestone),
+        "duration_days": m.duration_days,
+        "item_type": m.item_type.value,
+        "parent_id": m.parent_id,
+        "sort_order": int(m.sort_order or 0),
+        "clickup_task_id": m.clickup_task_id,
+    }
+
+
+def timeline_display_rows_for_project(db: Session, project_id: int) -> list[dict]:
+    """Same ordered rows as GET /milestones (timeline + ClickUp merge)."""
+    from sqlalchemy import select
+
+    from app.models import ClickUpTaskCache
+    from app.services.progress import (
+        build_clickup_lookups,
+        clickup_status_mapping_context,
+        enrich_milestone_clickup_fields,
+    )
+
+    ms_list = list(
+        db.scalars(
+            select(Milestone)
+            .where(Milestone.project_id == project_id)
+            .order_by(Milestone.sort_order, Milestone.parent_id.nulls_first(), Milestone.id)
+        ).all()
+    )
+    caches = list(
+        db.scalars(
+            select(ClickUpTaskCache).where(ClickUpTaskCache.project_id == project_id)
+        ).all()
+    )
+    with clickup_status_mapping_context(db):
+        tasks_by_id, milestone_cache = build_clickup_lookups(ms_list, caches)
+        pdc_rows: list[dict] = []
+        for m in ms_list:
+            base = _milestone_pdc_row_dict(m)
+            base.update(
+                enrich_milestone_clickup_fields(
+                    m,
+                    ms_list,
+                    tasks_by_id,
+                    milestone_cache,
+                    caches=caches,
+                    db=db,
+                )
+            )
+            pdc_rows.append(base)
+        return merge_timeline_with_clickup(pdc_rows, ms_list, caches, db=db)

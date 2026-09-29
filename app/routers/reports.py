@@ -23,6 +23,7 @@ class GenerateWeeklyBody(BaseModel):
     anchor_date: date | None = None
     notes: str | None = None
     mitigation_plan: str | None = None
+    regenerate: bool = False
 
 
 @router.get("/projects/{project_id}/weekly-reports")
@@ -92,6 +93,7 @@ def generate_report(
             user.id,
             body.notes,
             body.mitigation_plan,
+            regenerate=body.regenerate,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -103,7 +105,12 @@ def generate_report(
         {"report_id": report.id, "week_start": report.week_start.isoformat()},
     )
     db.commit()
-    return {"id": report.id, "week_start": report.week_start.isoformat()}
+    summary = report.summary or {}
+    return {
+        "id": report.id,
+        "week_start": report.week_start.isoformat(),
+        "document_version": summary.get("document_version"),
+    }
 
 
 @router.get("/projects/{project_id}/weekly-reports/{report_id}/download")

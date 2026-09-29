@@ -136,6 +136,21 @@ def compute_health(db: Session, project_id: int, as_of: date | None = None) -> d
     out["report_cut_off_date"] = status_cutoff.isoformat()
     out["active_report_date"] = anchor.isoformat()
     if snap:
-        out["snapshot_week_start"] = snap.week_start.isoformat()
-        out["snapshot_week_end"] = snap.week_end.isoformat()
+        if snap.week_end > snap.week_start:
+            # Legacy forward: kolom DB sudah menyimpan rentang tampilan.
+            out["snapshot_week_start"] = snap.week_start.isoformat()
+            out["snapshot_week_end"] = snap.week_end.isoformat()
+        else:
+            from app.services.report_calendar import period_for_report_date
+            from app.services.schedule_window import project_report_start_date
+
+            report_date = snap.week_end
+            pstart = project_report_start_date(db, project)
+            period_start, _ = period_for_report_date(
+                report_date,
+                project.weekly_report_cutoff_offset_days,
+                pstart,
+            )
+            out["snapshot_week_start"] = period_start.isoformat()
+            out["snapshot_week_end"] = report_date.isoformat()
     return out

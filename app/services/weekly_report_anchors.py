@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Project
 from app.services.report_calendar import (
-    anchor_on_or_before,
+    active_open_report_date,
     extend_anchors_for_project_end,
     filter_anchors_through_active_week,
     first_schedule_anchor_date,
@@ -88,7 +88,7 @@ def anchor_rows_with_planned(
     from datetime import date as date_cls
 
     today = today or date_cls.today()
-    active_anchor = anchor_on_or_before(today, project.weekly_report_anchor_weekday)
+    active_anchor = active_open_report_date(today, project.weekly_report_anchor_weekday)
     last_i = len(anchors) - 1
     out: list[dict] = []
     project_start = project_report_start_date(db, project)
