@@ -700,8 +700,8 @@ def scurve_points(
             actual = resolve_actual_progress(db, project, metrics_as_of)
             spi = compute_spi(actual, planned) or 0.0
         else:
-            actual = 0.0
-            spi = 0.0
+            actual = None
+            spi = None
 
         points.append(
             {

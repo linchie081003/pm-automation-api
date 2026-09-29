@@ -49,10 +49,10 @@ class ScurvePoint(BaseModel):
     date: str
     cut_off_date: Optional[str] = None
     planned_pct: float
-    actual_pct: float
+    actual_pct: Optional[float] = None
     baseline_version: Optional[int]
     is_frozen: bool
-    spi: float
+    spi: Optional[float] = None
 
 
 class RebaselineMarker(BaseModel):

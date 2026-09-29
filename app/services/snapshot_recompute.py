@@ -8,10 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import ProgressSnapshot, ProgressSnapshotSource, Project, WeeklyReport
-from app.services.progress import resolve_actual_progress
 from app.services.schedule import (
     baseline_for_date,
-    compute_spi,
     planned_pct_as_of,
     snapshot_key_for_report_date,
 )
@@ -22,6 +20,11 @@ SOURCE_PRIORITY: dict[ProgressSnapshotSource, int] = {
     ProgressSnapshotSource.manual_save: 2,
     ProgressSnapshotSource.planned_target: 1,
 }
+
+FROZEN_SOURCES = (
+    ProgressSnapshotSource.weekly_report,
+    ProgressSnapshotSource.manual_save,
+)
 
 
 def is_legacy_forward_snapshot(week_start: date, week_end: date) -> bool:
@@ -71,6 +74,11 @@ def recompute_snapshot_metrics(
     snap: ProgressSnapshot,
     report_date: date,
 ) -> None:
+    if snap.source in FROZEN_SOURCES:
+        snap.week_start = report_date
+        snap.week_end = report_date
+        return
+
     plan_rows = kickoff_milestones(db, project.id)
     if not plan_rows:
         from app.services.schedule import planned_progress_rows
@@ -78,16 +86,9 @@ def recompute_snapshot_metrics(
         plan_rows = planned_progress_rows(db, project.id)
     as_of = report_date
     planned = planned_pct_as_of(plan_rows, as_of, db=db) if plan_rows else 0.0
-    if snap.source == ProgressSnapshotSource.planned_target:
-        snap.planned_cumulative_pct = planned
-        snap.actual_cumulative_pct = 0.0
-        snap.spi_at_week = 0.0
-    else:
-        actual = resolve_actual_progress(db, project, as_of)
-        spi = compute_spi(actual, planned)
-        snap.planned_cumulative_pct = planned
-        snap.actual_cumulative_pct = actual
-        snap.spi_at_week = spi if spi is not None else 0.0
+    snap.planned_cumulative_pct = planned
+    snap.actual_cumulative_pct = 0.0
+    snap.spi_at_week = 0.0
     baseline = baseline_for_date(db, project.id, as_of)
     if baseline:
         snap.baseline_version = baseline.version
@@ -104,7 +105,7 @@ def recompute_project_historical_snapshots(
     """
     1) Pindahkan kunci legacy forward (week_end > week_start) → week_start = report_date.
     2) Normalisasi week_end = week_start.
-    3) Hitung ulang planned/actual/SPI per report_date (termasuk weekly_report / manual_save).
+    3) Hitung ulang planned target per report_date; snapshot frozen (weekly_report / manual_save) hanya dinormalisasi kuncinya.
     4) Selaraskan WeeklyReport week_start/week_end + frozen_metrics dari snapshot terkait.
     """
     project = db.get(Project, project_id)

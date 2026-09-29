@@ -3,6 +3,27 @@ from unittest.mock import MagicMock
 
 from app.models import Project, WeeklyReport
 from app.services import weekly_report_pptx as mod
+from app.services.weekly_report_pptx import _actual_pct_for_report_export, _scurve_snapshot_rows
+
+
+def test_actual_pct_masked_after_report_cut_off():
+    cut = date(2026, 7, 9)
+    pt_before = {"date": "2026-07-02", "actual_pct": 40.0}
+    pt_after = {"date": "2026-07-16", "actual_pct": 55.0}
+    assert _actual_pct_for_report_export(pt_before, cut) == 40.0
+    assert _actual_pct_for_report_export(pt_after, cut) is None
+
+
+def test_scurve_snapshot_skips_weeks_after_cut_off():
+    cut = date(2026, 7, 9)
+    points = [
+        {"date": "2026-06-25", "planned_pct": 10, "actual_pct": 8},
+        {"date": "2026-07-02", "planned_pct": 20, "actual_pct": 18},
+        {"date": "2026-07-16", "planned_pct": 35, "actual_pct": 30},
+    ]
+    rows = _scurve_snapshot_rows(points, date(2026, 7, 9), cut)
+    assert len(rows) == 2
+    assert rows[-1]["_date"] == date(2026, 7, 2)
 
 
 def test_build_weekly_report_pptx_smoke(tmp_path, monkeypatch):
@@ -34,6 +55,11 @@ def test_build_weekly_report_pptx_smoke(tmp_path, monkeypatch):
         mod,
         "project_report_start_date",
         lambda _db, _p: date(2026, 5, 1),
+    )
+    monkeypatch.setattr(
+        mod,
+        "_compute_auto_highlights",
+        lambda *a, **k: "GAP timeline phase:\n• Phase A\n\nTask selesai minggu ini:\n• T1",
     )
 
     dest = tmp_path / "weekly.pptx"

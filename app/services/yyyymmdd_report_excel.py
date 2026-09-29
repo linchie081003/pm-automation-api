@@ -792,6 +792,9 @@ def _fill_log_mingguan(
         r = _LOG_MINGGUAN_FIRST_WEEK_ROW + i
         if r > _LOG_MINGGUAN_LAST_WEEK_ROW:
             break
+        # Minggu setelah cut-off laporan ini: Actual Kumulatif kosong (meski ada data di DB).
+        if anchor_date > cut_off:
+            continue
         actual_frac = _actual_kumulatif_for_week(
             report_actuals,
             snap_actuals,
