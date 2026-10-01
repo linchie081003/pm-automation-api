@@ -92,6 +92,8 @@ def ensure_phase_af_columns(engine: Engine) -> None:
         "ALTER TABLE schedule_baseline_milestones ADD COLUMN IF NOT EXISTS parent_id INTEGER",
         "ALTER TABLE schedule_baseline_milestones ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0",
         "ALTER TABLE schedule_baseline_milestones ADD COLUMN IF NOT EXISTS row_key VARCHAR(64)",
+        "ALTER TABLE schedule_baseline_milestones ADD COLUMN IF NOT EXISTS predecessor_ref VARCHAR(64)",
+        "ALTER TABLE schedule_baseline_milestones ADD COLUMN IF NOT EXISTS predecessor_link_type VARCHAR(8)",
         "ALTER TABLE integration_settings ADD COLUMN IF NOT EXISTS holiday_dates JSONB DEFAULT '[]'",
         "CREATE TABLE IF NOT EXISTS timeline_templates (id SERIAL PRIMARY KEY, name VARCHAR(128) NOT NULL, methodology VARCHAR(32) NOT NULL, description TEXT, items JSONB DEFAULT '[]', is_active BOOLEAN DEFAULT TRUE, created_at TIMESTAMP DEFAULT NOW())",
         "CREATE TABLE IF NOT EXISTS project_roster_entries (id SERIAL PRIMARY KEY, project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, full_name VARCHAR(255) NOT NULL, email VARCHAR(255) DEFAULT '', role_label VARCHAR(128) DEFAULT '', created_at TIMESTAMP DEFAULT NOW())",

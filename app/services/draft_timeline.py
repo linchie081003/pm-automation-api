@@ -4,10 +4,14 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models import Project, ScheduleBaselineMilestone, TimelineItemType
-from app.services.business_calendar import add_business_days, business_day_after
 from app.services.project_lifecycle import draft_timeline_editable
 from app.services.schedule import get_draft_baseline, get_or_revive_sph_draft_baseline
 from app.services.timeline_item_type import parse_timeline_item_type
+from app.services.timeline_schedule import (
+    apply_schedule_driver_to_raw,
+    compute_project_timeline_summary,
+    schedule_draft_milestone_rows,
+)
 from app.services.timeline_validation import validate_timeline_items
 
 
@@ -43,6 +47,10 @@ def _row_out(
         "parent_id": r.parent_id,
         "parent_ref": parent_ref,
         "sort_order": r.sort_order,
+        "predecessor_ref": r.predecessor_ref,
+        "predecessor_link_type": (r.predecessor_link_type or "FS").upper()
+        if r.predecessor_ref
+        else None,
     }
 
 
@@ -96,124 +104,12 @@ def _resolve_draft_row_parents(rows: list[dict]) -> list[dict]:
     return out
 
 
-def _children(
-    by_id: dict[int, ScheduleBaselineMilestone], parent_id: int
-) -> list[ScheduleBaselineMilestone]:
-    return sorted(
-        [r for r in by_id.values() if r.parent_id == parent_id],
-        key=lambda x: (x.sort_order, x.id),
-    )
-
-
-def _apply_subtask_dates(
-    row: ScheduleBaselineMilestone, start: date, db: Session
-) -> None:
-    dur = max(row.duration_days or 1, 1)
-    row.start_date = add_business_days(start, 1, db)
-    row.target_date = add_business_days(row.start_date, dur, db)
-
-
-def _apply_task_dates(
-    row: ScheduleBaselineMilestone,
-    start: date,
-    db: Session,
-    by_id: dict[int, ScheduleBaselineMilestone],
-) -> None:
-    subtasks = [
-        c
-        for c in _children(by_id, row.id)
-        if c.item_type == TimelineItemType.subtask
-    ]
-    if subtasks:
-        cursor = start
-        for st in subtasks:
-            _apply_subtask_dates(st, cursor, db)
-            if st.target_date:
-                cursor = business_day_after(st.target_date, db)
-        starts = [s.start_date for s in subtasks if s.start_date]
-        ends = [s.target_date for s in subtasks if s.target_date]
-        row.start_date = min(starts) if starts else add_business_days(start, 1, db)
-        row.target_date = max(ends) if ends else row.start_date
-    else:
-        dur = max(row.duration_days or 1, 1)
-        row.start_date = add_business_days(start, 1, db)
-        row.target_date = add_business_days(row.start_date, dur, db)
-
-
-def _apply_milestone_gate(
-    row: ScheduleBaselineMilestone,
-    default_day: date,
-    manual: date | None,
-) -> None:
-    d = manual or default_day
-    row.start_date = d
-    row.target_date = d
-    row.duration_days = 0
-
-
-def _apply_phase_dates(
-    row: ScheduleBaselineMilestone,
-    phase_start: date,
-    db: Session,
-    by_id: dict[int, ScheduleBaselineMilestone],
-    milestone_manual: dict[int, date | None],
-) -> None:
-    kids = _children(by_id, row.id)
-    tasks = [c for c in kids if c.item_type == TimelineItemType.task]
-    gates = [c for c in kids if c.item_type == TimelineItemType.milestone]
-
-    phase_work_start = add_business_days(phase_start, 1, db)
-    dur = max(row.duration_days or 1, 1)
-    duration_end = add_business_days(phase_work_start, dur, db)
-
-    cursor = phase_start
-    for task in tasks:
-        _apply_task_dates(task, cursor, db, by_id)
-        if task.target_date:
-            cursor = business_day_after(task.target_date, db)
-
-    if tasks:
-        last_day = max(
-            (t.target_date for t in tasks if t.target_date),
-            default=phase_work_start,
-        )
-    else:
-        # Phase tanpa task (hanya milestone gate): rentang dari durasi + kalender kerja
-        last_day = duration_end
-
-    for gate in gates:
-        manual = milestone_manual.get(gate.id)
-        _apply_milestone_gate(gate, last_day, manual)
-
-    span_starts: list[date] = []
-    span_ends: list[date] = []
-    for c in tasks + gates:
-        if c.start_date:
-            span_starts.append(c.start_date)
-        if c.target_date:
-            span_ends.append(c.target_date)
-
-    if tasks:
-        if span_starts and span_ends:
-            row.start_date = min(span_starts)
-            row.target_date = max(span_ends)
-        else:
-            row.start_date = phase_work_start
-            row.target_date = duration_end
-    else:
-        row.start_date = phase_work_start
-        row.target_date = duration_end
-        if span_starts:
-            row.start_date = min(row.start_date, min(span_starts))
-        if span_ends:
-            row.target_date = max(row.target_date, max(span_ends))
-
-
 def recalc_draft_dates(
     db: Session,
     project_id: int,
     start: date,
     milestone_manual: dict[int, date | None] | None = None,
+    row_inputs: dict[int, dict] | None = None,
 ) -> None:
     draft = get_draft_baseline(db, project_id)
     if not draft:
@@ -225,21 +121,24 @@ def recalc_draft_dates(
             .order_by(ScheduleBaselineMilestone.sort_order, ScheduleBaselineMilestone.id)
         ).all()
     )
-    by_id = {r.id: r for r in rows}
-    manual = milestone_manual or {}
-    top = [
-        r
-        for r in rows
-        if not r.parent_id
-        and r.item_type in (TimelineItemType.phase, TimelineItemType.milestone)
-    ]
-    cursor = start
-    for row in sorted(top, key=lambda x: (x.sort_order, x.id)):
-        if row.item_type == TimelineItemType.milestone:
-            row.item_type = TimelineItemType.phase
-        _apply_phase_dates(row, cursor, db, by_id, manual)
-        if row.target_date:
-            cursor = business_day_after(row.target_date, db)
+    schedule_draft_milestone_rows(db, rows, start, milestone_manual, row_inputs)
+
+
+def preview_recalc_draft_rows(
+    db: Session,
+    project: Project,
+    rows: list[dict],
+    start: date | None,
+) -> list[dict]:
+    """Recalc dates via kalender kerja without committing (savepoint rollback)."""
+    sp = db.begin_nested()
+    try:
+        out = save_draft_rows(db, project, rows, start)
+        sp.rollback()
+        return out
+    except Exception:
+        sp.rollback()
+        raise
 
 
 def save_draft_rows(
@@ -260,6 +159,8 @@ def save_draft_rows(
         raise ValueError("Draft timeline belum ada — generate dari SPH")
 
     rows = _resolve_draft_row_parents(rows)
+    for raw in rows:
+        apply_schedule_driver_to_raw(db, raw)
 
     validate_items = []
     for raw in rows:
@@ -293,6 +194,7 @@ def save_draft_rows(
     db.flush()
     id_map: dict[str, int] = {}
     milestone_manual: dict[int, date | None] = {}
+    inputs_by_id: dict[int, dict] = {}
     normalized = sorted(rows, key=lambda x: int(x.get("sort_order") or 0))
     for raw in normalized:
         parent_ref = raw.get("parent_ref") or raw.get("parent_row_key")
@@ -302,6 +204,9 @@ def save_draft_rows(
         dur = int(raw["duration_days"]) if raw.get("duration_days") is not None else 1
         if it == TimelineItemType.milestone:
             dur = 0
+        pred_ref = str(raw.get("predecessor_ref") or "").strip() or None
+        link_raw = str(raw.get("predecessor_link_type") or "FS").strip().upper()
+        pred_link = link_raw if pred_ref and link_raw in ("FS", "SS", "FF", "SF") else None
         r = ScheduleBaselineMilestone(
             baseline_id=draft.id,
             row_key=row_key or None,
@@ -312,14 +217,26 @@ def save_draft_rows(
             item_type=it,
             parent_id=parent_id,
             sort_order=int(raw.get("sort_order") or 0),
+            predecessor_ref=pred_ref,
+            predecessor_link_type=pred_link or ("FS" if pred_ref else None),
         )
         db.add(r)
         db.flush()
+        inputs_by_id[r.id] = raw
         if it == TimelineItemType.milestone:
             milestone_manual[r.id] = _parse_optional_date(raw.get("target_date"))
         if row_key:
             id_map[row_key] = r.id
         id_map[str(r.id)] = r.id
     eff = start or draft.effective_from or date.today()
-    recalc_draft_dates(db, project.id, eff, milestone_manual)
+    recalc_draft_dates(db, project.id, eff, milestone_manual, inputs_by_id)
     return list_draft_rows(db, project.id)
+
+
+def draft_project_timeline_summary(
+    db: Session,
+    project_id: int,
+    project_start: date | None,
+) -> dict:
+    rows = list_draft_rows(db, project_id)
+    return compute_project_timeline_summary(db, rows, project_start)

@@ -17,8 +17,10 @@ from app.services.rebaseline_diff import (
     build_proposed_changes_payload,
     load_baseline_phases,
     load_live_phase_seed,
+    live_phase_lifecycle_by_id,
     load_rebaseline_phase_guide,
     normalize_proposed_phases,
+    recalc_proposed_phases_dates,
 )
 from app.services.schedule import rebaseline_project
 
@@ -34,6 +36,10 @@ class ProposedPhaseBody(BaseModel):
     milestone_id: int | None = None
     client_key: str | None = None
     sort_order: int = 0
+    notes: str | None = None
+    predecessor_ref: str | None = None
+    predecessor_link_type: str | None = None
+    duration_days: int | None = None
 
 
 class RebaselineRequestIn(BaseModel):
@@ -45,6 +51,11 @@ class RebaselineRequestIn(BaseModel):
 
 class RebaselineValidateIn(BaseModel):
     category: RebaselineCategory
+    effective_from: date
+    proposed_phases: list[ProposedPhaseBody]
+
+
+class RebaselineRecalcDatesIn(BaseModel):
     effective_from: date
     proposed_phases: list[ProposedPhaseBody]
 
@@ -138,6 +149,31 @@ def rebaseline_preview(
             "Progress actual mengikuti ClickUp. Setelah rebaseline disetujui, jalankan sync ClickUp "
             "dan pastikan fase/task baru terhubung ke list atau task ClickUp agar progress tetap akurat."
         ),
+    }
+
+
+@router.post("/recalc-dates")
+def rebaseline_recalc_dates(
+    project_id: int,
+    body: RebaselineRecalcDatesIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    codes: set[str] = Depends(get_permission_codes),
+):
+    ensure_permission(codes, "rebaseline.request", "schedule.rebaseline", "schedule.read")
+    ensure_project_read(project_id, user, codes, db)
+    proposed = normalize_proposed_phases(
+        [ProposedPhaseIn.model_validate(p.model_dump()) for p in body.proposed_phases]
+    )
+    lifecycle = live_phase_lifecycle_by_id(db, project_id)
+    recalc = recalc_proposed_phases_dates(
+        db,
+        proposed,
+        project_start=body.effective_from,
+        lifecycle_by_id=lifecycle,
+    )
+    return {
+        "proposed_phases": [p.model_dump_jsonable() for p in recalc],
     }
 
 

@@ -13,7 +13,7 @@ def test_sph_complete_requires_fields():
         estimated_start_date=date(2026, 1, 1),
         target_delivery_days=90,
         scope_items=[{"id": "1", "text": "a"}],
-        non_scope_items=[{"id": "2", "text": "b"}],
+        non_scope_text="Out of scope item",
         delivery_items=[{"id": "3", "name": "Delivery", "amount_rupiah": 100_000_000}],
         sph_total_rupiah=100_000_000,
         delivery_method="remote",

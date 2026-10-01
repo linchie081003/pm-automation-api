@@ -33,6 +33,7 @@ from app.services.health import compute_health
 from app.services.progress import resolve_actual_progress
 from app.services.project_code import next_project_code
 from app.services.project_delete import delete_project, validate_project_deletion
+from app.services.project_duplicate import duplicate_project
 from app.services.workflow import (
     apply_phase_transition,
     ensure_phase_row,
@@ -445,6 +446,55 @@ def patch_bast(
     log_activity(db, project_id, user.id, "bast.updated", {})
     db.commit()
     return {"bast_checklist": p.bast_checklist}
+
+
+@router.post("/{project_id}/duplicate", response_model=ProjectOut)
+def duplicate_project_endpoint(
+    project_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    codes: set[str] = Depends(get_permission_codes),
+):
+    ensure_permission(codes, "projects.write")
+    ensure_project_write(project_id, user, codes, db)
+    source = db.get(Project, project_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Not found")
+    try:
+        p = duplicate_project(db, source, user)
+        log_activity(
+            db,
+            p.id,
+            user.id,
+            "project.duplicated",
+            {"source_project_id": project_id, "source_code": source.code},
+        )
+        db.commit()
+        db.refresh(p)
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    sph = db.get(ProjectSph, p.id)
+    po = db.get(ProjectPo, p.id)
+    due = p.po_due_date
+    if po and po.po_due_date:
+        due = po.po_due_date
+    return ProjectOut(
+        id=p.id,
+        code=p.code,
+        name=p.name,
+        client_name=p.client_name,
+        current_phase=p.current_phase.value,
+        delivery_started_at=None,
+        owner_id=p.owner_id,
+        po_due_date=due.isoformat() if due else None,
+        po_sub_total=po.po_sub_total if po else None,
+        contract_value=p.contract_value,
+        sph_total_rupiah=sph.sph_total_rupiah if sph else None,
+        sph_no=sph.sph_no if sph else None,
+        project_manager=p.project_manager,
+        project_brief=p.project_brief,
+    )
 
 
 @router.delete("/{project_id}", status_code=204)

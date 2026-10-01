@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models import PreKickoffPack, Project, ProjectSph, User
 from app.services.deck_kickoff import build_kickoff_deck_path, generate_kickoff_deck
 from app.services.deck_pre_kickoff import build_pre_kickoff_deck_path, generate_pre_kickoff_deck
+from app.services.draft_timeline import draft_project_timeline_summary
 from app.services.kickoff_timeline import confirm_kickoff_timeline, list_draft_timeline
 from app.services.pre_kickoff import check_pack_complete, sync_pack_from_sph
 from app.services.activity import log_activity
@@ -60,6 +61,11 @@ def _pack_out(db: Session, pack: PreKickoffPack) -> dict:
         "estimated_start_date": sph.estimated_start_date.isoformat()
         if sph and sph.estimated_start_date
         else None,
+        "project_timeline": draft_project_timeline_summary(
+            db,
+            pack.project_id,
+            sph.estimated_start_date if sph else None,
+        ),
         "timeline_confirmed": bool(project and project.kickoff_timeline_confirmed_at),
     }
 

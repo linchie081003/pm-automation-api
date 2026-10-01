@@ -29,6 +29,10 @@ class ProposedPhaseIn(BaseModel):
     milestone_id: int | None = None
     client_key: str | None = None
     sort_order: int = 0
+    notes: str | None = None
+    predecessor_ref: str | None = None
+    predecessor_link_type: str | None = None
+    duration_days: int | None = None
 
 
 class PhaseSnapshot(BaseModel):
@@ -39,6 +43,10 @@ class PhaseSnapshot(BaseModel):
     milestone_id: int | None = None
     client_key: str | None = None
     sort_order: int = 0
+    notes: str | None = None
+    predecessor_ref: str | None = None
+    predecessor_link_type: str | None = None
+    duration_days: int | None = None
 
     def model_dump_jsonable(self) -> dict[str, Any]:
         d = self.model_dump()
@@ -99,17 +107,24 @@ def load_live_phase_seed(db: Session, project_id: int) -> list[PhaseSnapshot]:
             .order_by(Milestone.sort_order, Milestone.id)
         ).all()
     )
-    return [
-        PhaseSnapshot(
-            name=r.name,
-            start_date=r.start_date,
-            target_date=r.target_date,
-            weight_pct=float(r.weight_pct or 0),
-            milestone_id=r.id,
-            sort_order=r.sort_order or 0,
+    out: list[PhaseSnapshot] = []
+    for r in rows:
+        dur = r.duration_days
+        if dur is None and r.start_date and r.target_date:
+            dur = (r.target_date - r.start_date).days + 1
+            dur = max(int(dur), 1)
+        out.append(
+            PhaseSnapshot(
+                name=r.name,
+                start_date=r.start_date,
+                target_date=r.target_date,
+                weight_pct=float(r.weight_pct or 0),
+                milestone_id=r.id,
+                sort_order=r.sort_order or 0,
+                duration_days=dur,
+            )
         )
-        for r in rows
-    ]
+    return out
 
 
 def _phase_lifecycle_bucket(phase: Milestone, clickup_workflow: str) -> str:
@@ -199,6 +214,12 @@ def normalize_proposed_phases(raw: list[ProposedPhaseIn]) -> list[PhaseSnapshot]
                 milestone_id=p.milestone_id,
                 client_key=p.client_key,
                 sort_order=p.sort_order if p.sort_order else i,
+                notes=(p.notes or "").strip() or None,
+                predecessor_ref=(p.predecessor_ref or "").strip() or None,
+                predecessor_link_type=(p.predecessor_link_type or "FS").strip().upper()
+                if (p.predecessor_ref or "").strip()
+                else None,
+                duration_days=p.duration_days,
             )
         )
     return out
@@ -388,6 +409,158 @@ def build_proposed_changes_payload(
         "phase_summary": phase_summary,
         "weight_total_pct": round(sum(p.weight_pct for p in proposed), 4),
     }
+
+
+def _phase_ref(p: PhaseSnapshot, index: int) -> str:
+    if p.milestone_id is not None:
+        return f"m:{p.milestone_id}"
+    if p.client_key:
+        return f"c:{p.client_key}"
+    return f"i:{index}"
+
+
+def recalc_proposed_phases_dates(
+    db: Session,
+    proposed: list[PhaseSnapshot],
+    *,
+    project_start: date | None = None,
+    lifecycle_by_id: dict[int, str] | None = None,
+) -> list[PhaseSnapshot]:
+    """Predecessor links FS/SS/FF/SF using hari kerja + libur (draft timeline engine)."""
+    from app.services.business_calendar import (
+        add_business_days,
+        business_day_after,
+        count_business_days_inclusive,
+    )
+    from app.services.schedule_dependency import (
+        link_type_requires_pred_end,
+        link_type_requires_pred_start,
+        parse_predecessor_link_type,
+        resolve_successor_span,
+    )
+
+    lifecycle_by_id = lifecycle_by_id or {}
+    sorted_p = sorted(proposed, key=lambda x: (x.sort_order, x.milestone_id or 0))
+    phase_end_by_ref: dict[str, date] = {}
+    phase_start_by_ref: dict[str, date] = {}
+    computed_by_ref: dict[str, PhaseSnapshot] = {}
+    cursor: date | None = project_start
+
+    for i, p in enumerate(sorted_p):
+        ref = _phase_ref(p, i)
+        if p.milestone_id and lifecycle_by_id.get(p.milestone_id) == "closed":
+            computed_by_ref[ref] = p
+            if p.start_date:
+                phase_start_by_ref[ref] = p.start_date
+            if p.target_date:
+                phase_end_by_ref[ref] = p.target_date
+                cursor = business_day_after(p.target_date, db)
+
+    pending: list[tuple[int, PhaseSnapshot]] = []
+    for i, p in enumerate(sorted_p):
+        ref = _phase_ref(p, i)
+        if ref in computed_by_ref:
+            continue
+        pending.append((i, p))
+
+    guard = 0
+    while pending and guard < len(pending) * 3 + 5:
+        guard += 1
+        i, p = pending[0]
+        ref = _phase_ref(p, i)
+        pred = (p.predecessor_ref or "").strip()
+        link = parse_predecessor_link_type(p.predecessor_link_type)
+        if pred:
+            if link_type_requires_pred_end(link) and pred not in phase_end_by_ref:
+                pending.append(pending.pop(0))
+                continue
+            if link_type_requires_pred_start(link) and pred not in phase_start_by_ref:
+                pending.append(pending.pop(0))
+                continue
+
+        dur = p.duration_days
+        if (not dur or dur <= 0) and p.start_date and p.target_date:
+            dur = count_business_days_inclusive(p.start_date, p.target_date, db)
+        dur = max(int(dur or 1), 1)
+
+        start: date | None = None
+        target: date | None = None
+        if pred:
+            span = resolve_successor_span(
+                link,
+                phase_start_by_ref.get(pred),
+                phase_end_by_ref.get(pred),
+                dur,
+                db,
+            )
+            if span[0] and span[1]:
+                start, target = span
+        if start is None:
+            if cursor is not None:
+                start = cursor
+            elif project_start:
+                start = project_start
+            else:
+                start = p.start_date or date.today()
+            target = add_business_days(start, dur, db)
+
+        snap = PhaseSnapshot(
+            name=p.name,
+            start_date=start,
+            target_date=target,
+            weight_pct=p.weight_pct,
+            milestone_id=p.milestone_id,
+            client_key=p.client_key,
+            sort_order=p.sort_order,
+            notes=p.notes,
+            predecessor_ref=p.predecessor_ref,
+            predecessor_link_type=p.predecessor_link_type,
+            duration_days=dur,
+        )
+        computed_by_ref[ref] = snap
+        if start:
+            phase_start_by_ref[ref] = start
+        if target:
+            phase_end_by_ref[ref] = target
+            cursor = business_day_after(target, db)
+        pending.pop(0)
+
+    for i, p in pending:
+        ref = _phase_ref(p, i)
+        if ref in computed_by_ref:
+            continue
+        dur = max(int(p.duration_days or 1), 1)
+        start = p.start_date or cursor or project_start or date.today()
+        target = add_business_days(start, dur, db)
+        computed_by_ref[ref] = PhaseSnapshot(
+            name=p.name,
+            start_date=start,
+            target_date=target,
+            weight_pct=p.weight_pct,
+            milestone_id=p.milestone_id,
+            client_key=p.client_key,
+            sort_order=p.sort_order,
+            notes=p.notes,
+            predecessor_ref=p.predecessor_ref,
+            predecessor_link_type=p.predecessor_link_type,
+            duration_days=dur,
+        )
+
+    by_mid = {
+        p.milestone_id: p
+        for p in computed_by_ref.values()
+        if p.milestone_id is not None
+    }
+    by_ck = {p.client_key: p for p in computed_by_ref.values() if p.client_key}
+    out: list[PhaseSnapshot] = []
+    for p in proposed:
+        hit = None
+        if p.milestone_id is not None:
+            hit = by_mid.get(p.milestone_id)
+        if not hit and p.client_key:
+            hit = by_ck.get(p.client_key)
+        out.append(hit if hit else p)
+    return out
 
 
 def apply_proposed_phases_to_live(

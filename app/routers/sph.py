@@ -17,7 +17,12 @@ from app.services.project_lifecycle import (
     sph_timeline_editable,
 )
 from app.services.workflow import apply_phase_transition, next_phase
-from app.services.draft_timeline import list_draft_rows, save_draft_rows
+from app.services.draft_timeline import (
+    list_draft_rows,
+    preview_recalc_draft_rows,
+    save_draft_rows,
+)
+from app.services.timeline_schedule import compute_project_timeline_summary
 from app.services.sph import (
     apply_sph_total_from_delivery,
     compute_payment_term_amounts,
@@ -66,6 +71,11 @@ class DraftRowIn(BaseModel):
     parent_ref: str | None = None
     parent_id: int | None = None
     sort_order: int = 0
+    start_date: date | None = None
+    target_date: date | None = None
+    predecessor_ref: str | None = None
+    predecessor_link_type: str | None = None
+    schedule_driver: str | None = None
 
 
 class DraftTimelineUpdate(BaseModel):
@@ -82,6 +92,7 @@ class SphUpdate(BaseModel):
     timeline_template_id: int | None = None
     target_delivery_days: int | None = None
     scope_items: list[LineItemIn] | None = None
+    non_scope_text: str | None = None
     non_scope_items: list[LineItemIn] | None = None
     delivery_items: list[DeliveryItemIn] | None = None
     delivery_method: str | None = None
@@ -177,6 +188,11 @@ def _out(sph) -> dict:
 def _out_with_draft(db: Session, sph) -> dict:
     data = _out(sph)
     data["draft_timeline"] = list_draft_rows(db, sph.project_id)
+    data["project_timeline"] = compute_project_timeline_summary(
+        db,
+        data["draft_timeline"],
+        sph.estimated_start_date,
+    )
     return data
 
 
@@ -221,7 +237,11 @@ def update_sph(
     if body.scope_items is not None:
         sph.scope_items = _normalize_line_items(body.scope_items)
         data.pop("scope_items", None)
-    if body.non_scope_items is not None:
+    if body.non_scope_text is not None:
+        sph.non_scope_text = (body.non_scope_text or "").strip() or None
+        sph.non_scope_items = []
+        data.pop("non_scope_text", None)
+    elif body.non_scope_items is not None:
         sph.non_scope_items = _normalize_line_items(body.non_scope_items)
         data.pop("non_scope_items", None)
     if body.delivery_items is not None:
@@ -262,6 +282,37 @@ def update_sph(
     return _out_with_draft(db, sph)
 
 
+@router.post("/draft-timeline/recalc")
+def recalc_draft_timeline_preview(
+    project_id: int,
+    body: DraftTimelineUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    codes: set[str] = Depends(get_permission_codes),
+):
+    """Hitung ulang mulai/selesai dari durasi + kalender kerja (tidak menyimpan)."""
+    ensure_permission(codes, "sph.read", "sph.write", "projects.read.all", "projects.read.own")
+    ensure_project_read(project_id, user, codes, db)
+    project = db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    sph = get_or_create_sph(db, project_id)
+    try:
+        eff = body.start_date or sph.estimated_start_date
+        rows = preview_recalc_draft_rows(
+            db,
+            project,
+            [r.model_dump() for r in body.rows],
+            eff,
+        )
+        return {
+            "draft_timeline": rows,
+            "project_timeline": compute_project_timeline_summary(db, rows, eff),
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
 @router.put("/draft-timeline")
 def update_draft_timeline(
     project_id: int,
@@ -282,11 +333,12 @@ def update_draft_timeline(
             detail="Timeline draft tidak dapat diedit pada fase ini",
         )
     try:
+        eff = body.start_date or sph.estimated_start_date
         rows = save_draft_rows(
             db,
             project,
             [r.model_dump() for r in body.rows],
-            body.start_date or sph.estimated_start_date,
+            eff,
         )
         sync_payment_terms_with_draft_timeline(db, sph)
         sph.updated_at = datetime.utcnow()
@@ -299,7 +351,11 @@ def update_draft_timeline(
         )
         db.commit()
         terms = compute_payment_term_amounts(sph.payment_terms or [], sph.sph_total_rupiah)
-        return {"draft_timeline": rows, "payment_terms": terms}
+        return {
+            "draft_timeline": rows,
+            "payment_terms": terms,
+            "project_timeline": compute_project_timeline_summary(db, rows, eff),
+        }
     except ValueError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e)) from e

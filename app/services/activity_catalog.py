@@ -2,6 +2,7 @@
 
 ACTION_LABELS: dict[str, str] = {
     "phase.advanced": "Fase proyek dilanjutkan",
+    "project.duplicated": "Proyek diduplikasi dari SPH",
     "phase.transition.requested": "Permintaan transisi fase (approval)",
     "phase.transition.approved": "Transisi fase disetujui",
     "phase.transition.rejected": "Transisi fase ditolak",

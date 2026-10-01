@@ -70,6 +70,21 @@ def business_day_after(d: date, db: Session | None = None) -> date:
     return cur
 
 
+def subtract_business_days(end: date, days: int, db: Session | None = None) -> date:
+    """Start of an inclusive business-day span of length `days` ending on `end`."""
+    holidays = _holiday_set(db)
+    work_days = _work_weekdays(db)
+    cur = next_business_day(end, holidays, work_days)
+    if days <= 1:
+        return cur
+    remaining = days - 1
+    while remaining > 0:
+        cur -= timedelta(days=1)
+        if is_business_day(cur, holidays, work_days):
+            remaining -= 1
+    return cur
+
+
 def count_business_days_inclusive(
     start: date, end: date, db: Session | None = None
 ) -> int:

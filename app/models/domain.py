@@ -199,6 +199,8 @@ class ScheduleBaselineMilestone(Base):
     )
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     row_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    predecessor_ref: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    predecessor_link_type: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
 
     baseline: Mapped["ScheduleBaseline"] = relationship(back_populates="milestone_rows")
 
