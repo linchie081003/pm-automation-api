@@ -18,6 +18,16 @@ from app.config import settings
 router = APIRouter(tags=["reports"])
 
 
+def _ensure_weekly_reports_read(codes: set[str]) -> None:
+    """Lihat daftar / unduh laporan: izin reports atau schedule (S-curve tab Reports)."""
+    ensure_permission(
+        codes,
+        "reports.weekly.download",
+        "reports.weekly.generate",
+        "schedule.read",
+    )
+
+
 class GenerateWeeklyBody(BaseModel):
     week_start: date | None = None
     anchor_date: date | None = None
@@ -33,7 +43,7 @@ def list_weekly_reports(
     user: User = Depends(get_current_user),
     codes: set[str] = Depends(get_permission_codes),
 ):
-    ensure_permission(codes, "reports.weekly.download", "reports.weekly.generate")
+    _ensure_weekly_reports_read(codes)
     ensure_project_read(project_id, user, codes, db)
     reports = db.scalars(
         select(WeeklyReport)
@@ -121,7 +131,7 @@ def download_report(
     user: User = Depends(get_current_user),
     codes: set[str] = Depends(get_permission_codes),
 ):
-    ensure_permission(codes, "reports.weekly.download")
+    _ensure_weekly_reports_read(codes)
     ensure_project_read(project_id, user, codes, db)
     report = db.get(WeeklyReport, report_id)
     if not report or report.project_id != project_id or not report.xlsx_path:
@@ -142,7 +152,7 @@ def download_report_pptx(
     user: User = Depends(get_current_user),
     codes: set[str] = Depends(get_permission_codes),
 ):
-    ensure_permission(codes, "reports.weekly.download")
+    _ensure_weekly_reports_read(codes)
     ensure_project_read(project_id, user, codes, db)
     report = db.get(WeeklyReport, report_id)
     if not report or report.project_id != project_id or not report.pptx_path:

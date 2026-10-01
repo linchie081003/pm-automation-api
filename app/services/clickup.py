@@ -42,6 +42,45 @@ def _headers(row: IntegrationSettings) -> dict[str, str]:
     }
 
 
+def clickup_error_detail_from_response(response: httpx.Response) -> str | None:
+    """Parse JSON body ClickUp (ECODE) menjadi pesan yang bisa ditindaklanjuti."""
+    text = (response.text or "").strip()
+    body: dict | None = None
+    if text.startswith("{"):
+        try:
+            parsed = response.json()
+            if isinstance(parsed, dict):
+                body = parsed
+        except ValueError:
+            body = None
+    err = str((body or {}).get("err") or "").strip()
+    ecode = str((body or {}).get("ECODE") or "").strip()
+    err_l = err.lower()
+    if ecode == "OAUTH_192" or "workspace not authorized" in err_l:
+        return (
+            "ClickUp: workspace tidak diizinkan untuk token ini (OAUTH_192). "
+            "Samakan Team ID di Integrasi dengan angka di URL workspace "
+            "(app.clickup.com/<Team ID>/…); gunakan Personal API Token (pk_…) dari akun "
+            "yang anggota workspace itu; pastikan Folder/Space proyek ada di workspace yang sama."
+        )
+    if err or ecode:
+        return f"ClickUp: {err} ({ecode})" if ecode else f"ClickUp: {err}"
+    if text:
+        return f"ClickUp menolak permintaan ({response.status_code}): {text[:300]}"
+    return None
+
+
+def _clickup_auth_http_detail(response: httpx.Response) -> str:
+    parsed = clickup_error_detail_from_response(response)
+    if parsed:
+        return parsed
+    return (
+        "ClickUp: token ditolak atau tidak punya akses workspace/resource ini. "
+        "Buat Personal API Token baru (ClickUp → Settings → Apps), cek Team ID, "
+        "lalu Test connection di Integrasi. Format token: pk_… tanpa «Bearer»."
+    )
+
+
 def clickup_http_exception(e: httpx.HTTPError) -> "HTTPException":
     """Map ClickUp httpx errors to FastAPI responses with actionable detail."""
     from fastapi import HTTPException
@@ -49,21 +88,11 @@ def clickup_http_exception(e: httpx.HTTPError) -> "HTTPException":
     if isinstance(e, httpx.HTTPStatusError) and e.response is not None:
         code = e.response.status_code
         url = str(e.request.url) if e.request else ""
-        if code == 401:
+        if code in (401, 403):
             # Jangan pakai HTTP 401 — frontend menganggap sesi login aplikasi habis.
             return HTTPException(
                 status_code=403,
-                detail=(
-                    "ClickUp: token ditolak (401 dari API ClickUp). "
-                    "Buat Personal API Token baru di ClickUp → Settings → Apps, "
-                    "simpan di menu Integrasi ClickUp (Settings), lalu Test connection. "
-                    "Format: pk_… tanpa «Bearer»."
-                ),
-            )
-        if code == 403:
-            return HTTPException(
-                status_code=403,
-                detail="Token ClickUp tidak punya akses ke workspace/folder/list ini.",
+                detail=_clickup_auth_http_detail(e.response),
             )
         if code == 404:
             return HTTPException(
@@ -117,6 +146,25 @@ def verify_stored_clickup_token(db: Session) -> dict:
         r.raise_for_status()
         team = r.json().get("team") or {}
     return {"team_id": str(team.get("id") or team_id), "team_name": team.get("name")}
+
+
+def assert_clickup_folder_access(row: IntegrationSettings, folder_id: str) -> None:
+    """Pastikan token bisa baca folder (satu workspace dengan Team ID / token)."""
+    fid = (folder_id or "").strip()
+    if not fid:
+        return
+    url = f"https://api.clickup.com/api/v2/folder/{fid}"
+    with httpx.Client(timeout=30.0) as client:
+        r = client.get(url, headers=_headers(row))
+    if r.status_code in (401, 403):
+        raise ClickUpSyncError(_clickup_auth_http_detail(r))
+    try:
+        r.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise ClickUpSyncError(
+            clickup_error_detail_from_response(r)
+            or f"Gagal baca folder ClickUp ({r.status_code})."
+        ) from e
 
 
 def list_clickup_spaces(db: Session) -> list[dict]:

@@ -5,7 +5,7 @@ from app.services.timeline_schedule import compute_project_timeline_summary
 
 def test_compute_project_timeline_summary(monkeypatch):
     monkeypatch.setattr(
-        "app.services.business_calendar.count_business_days_inclusive",
+        "app.services.timeline_schedule.count_business_days_inclusive",
         lambda s, e, db=None: 10,
     )
     rows = [
@@ -25,5 +25,13 @@ def test_compute_project_timeline_summary(monkeypatch):
         rows,
         date(2026, 10, 1),
     )
+    assert out["project_start_date"] == "2026-10-01"
     assert out["project_end_date"] == "2026-10-20"
     assert out["project_duration_business_days"] == 10
+
+    out_late_estimate = compute_project_timeline_summary(
+        None,
+        rows,
+        date(2026, 10, 5),
+    )
+    assert out_late_estimate["project_start_date"] == "2026-10-01"

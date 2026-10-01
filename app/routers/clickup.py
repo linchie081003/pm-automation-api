@@ -241,12 +241,6 @@ def test_connection(
             r = client.get(url, headers=headers)
             r.raise_for_status()
             data = r.json()
-    except httpx.HTTPStatusError as e:
-        detail = e.response.text[:500] if e.response is not None else str(e)
-        raise HTTPException(
-            status_code=502,
-            detail=f"ClickUp menolak permintaan ({e.response.status_code if e.response else '?'}): {detail}",
-        ) from e
     except httpx.HTTPError as e:
         raise clickup_http_exception(e) from e
     team = data.get("team") or {}

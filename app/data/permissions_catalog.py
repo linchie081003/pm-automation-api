@@ -109,6 +109,7 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
         "milestones.write",
         "documents.upload",
         "documents.download",
+        "reports.weekly.download",
         "schedule.read",
         "health.read",
         "tasks.read",

@@ -12,6 +12,7 @@ from app.services.clickup import (
     ClickUpSyncError,
     _headers,
     _resolve_space_id,
+    assert_clickup_folder_access,
     get_integration,
     is_configured,
 )
@@ -246,6 +247,7 @@ def provision_folder_structure(
 
     if project.clickup_folder_id:
         folder_id = project.clickup_folder_id.strip()
+        assert_clickup_folder_access(row, folder_id)
     else:
         folder_id = ensure_project_clickup_folder(db, project)
     phases = parent_phases_for_clickup(db, project.id)

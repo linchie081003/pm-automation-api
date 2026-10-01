@@ -13,18 +13,18 @@ from app.services.business_calendar import (
     count_business_days_inclusive,
     subtract_business_days,
 )
-
-
-def subtract_business_days_from_end(
-    db: Session | None, end: date, duration_days: int
-) -> date:
-    return subtract_business_days(end, max(int(duration_days or 1), 1), db)
 from app.services.schedule_dependency import (
     link_type_requires_pred_end,
     link_type_requires_pred_start,
     parse_predecessor_link_type,
     resolve_successor_span,
 )
+
+
+def subtract_business_days_from_end(
+    db: Session | None, end: date, duration_days: int
+) -> date:
+    return subtract_business_days(end, max(int(duration_days or 1), 1), db)
 
 
 def _parse_optional_date(raw) -> date | None:
@@ -45,25 +45,29 @@ def compute_project_timeline_summary(
     project_start: date | None,
 ) -> dict:
     """
-    Rentang proyek dari estimasi mulai s/d selesai terakhir di timeline (hari kerja inclusive).
+    Durasi aktual: tanggal mulai paling awal s/d tanggal akhir paling akhir baris timeline
+    (phase/task/subtask; milestone gate diabaikan), hari kerja inclusive.
     """
+    starts: list[date] = []
     ends: list[date] = []
     for raw in row_dicts:
         it = str(raw.get("item_type") or "phase").lower()
         if it == "milestone":
             continue
+        sd = _parse_optional_date(raw.get("start_date"))
+        if sd:
+            starts.append(sd)
         td = _parse_optional_date(raw.get("target_date"))
         if td:
             ends.append(td)
-    from app.services.business_calendar import count_business_days_inclusive as _count_bd
 
-    start = project_start
+    start = min(starts) if starts else project_start
     end = max(ends) if ends else None
     dur: int | None = None
     if start and end and end >= start:
-        dur = _count_bd(start, end, db)
+        dur = count_business_days_inclusive(start, end, db)
     elif start and end:
-        dur = _count_bd(end, start, db)
+        dur = count_business_days_inclusive(end, start, db)
     return {
         "project_start_date": start.isoformat() if start else None,
         "project_end_date": end.isoformat() if end else None,

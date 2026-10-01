@@ -274,6 +274,7 @@ def list_report_anchors(
         raise HTTPException(status_code=404, detail="Not found")
 
     today = date.today()
+    schedule_warning: str | None = None
     try:
         project_end, _ = project_report_end_date(db, project_id)
         cap = project_end or today
@@ -281,7 +282,19 @@ def list_report_anchors(
             resolve_project_anchor_context(db, project, cap_at=cap)
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        err = str(exc)
+        first = project.weekly_report_first_anchor_date
+        if first is not None and "Tanggal laporan pertama" in err:
+            schedule_warning = err
+            project.weekly_report_first_anchor_date = None
+            try:
+                anchors, range_start, project_start, project_end, bound_source = (
+                    resolve_project_anchor_context(db, project, cap_at=cap)
+                )
+            finally:
+                project.weekly_report_first_anchor_date = first
+        else:
+            raise HTTPException(status_code=400, detail=err) from exc
     anchors_started = filter_anchors_through_active_week(
         anchors, project.weekly_report_anchor_weekday, today
     )
@@ -347,6 +360,7 @@ def list_report_anchors(
         "weekly_report_first_anchor_date": project.weekly_report_first_anchor_date.isoformat()
         if project.weekly_report_first_anchor_date
         else None,
+        "schedule_warning": schedule_warning,
     }
 
 
