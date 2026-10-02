@@ -120,6 +120,7 @@ def list_milestones(
 ):
     ensure_permission(codes, "milestones.read")
     ensure_project_read(project_id, user, codes, db)
+    project = db.get(Project, project_id)
     ms = db.scalars(
         select(Milestone)
         .where(Milestone.project_id == project_id)
@@ -142,7 +143,9 @@ def list_milestones(
                 )
             )
             pdc_rows.append(base)
-        merged = merge_timeline_with_clickup(pdc_rows, ms_list, caches, db=db)
+        merged = merge_timeline_with_clickup(
+            pdc_rows, ms_list, caches, db=db, project=project
+        )
     return [MilestoneOut(**row) for row in merged]
 
 

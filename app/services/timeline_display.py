@@ -6,7 +6,8 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
-from app.models import ClickUpTaskCache, Milestone, TimelineItemType
+from app.models import ClickUpTaskCache, Milestone, Project, TimelineItemType
+from app.services.clickup_milestone_dates import timeline_baseline_locked
 from app.services.business_calendar import count_business_days_inclusive
 from app.services.clickup import _cache_start_date, _parent_date_span
 from app.services.progress import (
@@ -45,6 +46,7 @@ def resolve_clickup_baseline_dates(
     ms_by_id: dict[int, Milestone],
     ms_by_clickup: dict[str, Milestone],
     pdc_parent: Milestone | None = None,
+    project: Project | None = None,
 ) -> tuple[date | None, date | None]:
     """Subtask → parent PDC/task span only (never subtask's own ClickUp dates)."""
     is_subtask = bool(parent_clickup_task_id or cache.parent_task_id or pdc_parent)
@@ -58,7 +60,10 @@ def resolve_clickup_baseline_dates(
             parent = caches_by_tid.get(parent_tid)
             if parent:
                 ps, pe, _ = _parent_date_span(
-                    parent, ms_by_id=ms_by_id, ms_by_clickup=ms_by_clickup
+                    parent,
+                    ms_by_id=ms_by_id,
+                    ms_by_clickup=ms_by_clickup,
+                    protect_pdc_baseline=timeline_baseline_locked(project),
                 )
                 span = _span_from_bounds(ps, pe)
                 if span[0] or span[1]:
@@ -68,8 +73,14 @@ def resolve_clickup_baseline_dates(
             return inherited
         return None, None
     linked = ms_by_clickup.get(cache.clickup_task_id or "")
-    if linked and (linked.start_date or linked.target_date):
-        return _span_from_bounds(linked.start_date, linked.target_date)
+    if linked:
+        if linked.start_date or linked.target_date:
+            return _span_from_bounds(linked.start_date, linked.target_date)
+        inherited = _span_from_bounds(phase.start_date, phase.target_date)
+        if inherited[0] or inherited[1]:
+            return inherited
+        if timeline_baseline_locked(project):
+            return None, None
     own = _span_from_bounds(*_cache_date_span(cache))
     if own[0] or own[1]:
         return own
@@ -138,6 +149,7 @@ def _extra_row_dict(
     ms_by_id: dict[int, Milestone] | None = None,
     ms_by_clickup: dict[str, Milestone] | None = None,
     db: Session | None = None,
+    project: Project | None = None,
 ) -> dict:
     pct = task_cache_progress_pct(cache, subtasks=cu_subtasks if cu_subtasks else None)
     by_tid = caches_by_tid or {}
@@ -152,6 +164,7 @@ def _extra_row_dict(
         ms_by_id=ms_by_id or {},
         ms_by_clickup=ms_by_clickup or {},
         pdc_parent=pdc_parent,
+        project=project,
     )
     dur = business_duration_days(t_start, t_end, db)
     inherited_dates = bool(parent_clickup_task_id and t_start and t_end)
@@ -195,6 +208,7 @@ def merge_timeline_with_clickup(
     milestones: list[Milestone],
     caches: list[ClickUpTaskCache],
     db: Session | None = None,
+    project: Project | None = None,
 ) -> list[dict]:
     """Ordered flat rows: phase block = PDC rows then ClickUp-only tasks for that list."""
     tasks_by_id, milestone_cache = build_clickup_lookups(milestones, caches)
@@ -247,6 +261,7 @@ def merge_timeline_with_clickup(
             ms_by_id=ms_by_id,
             ms_by_clickup=ms_by_clickup,
             db=db,
+            project=project,
         )
         row["expandable"] = len(subs) > 0
         append_row(row)
@@ -325,6 +340,7 @@ def merge_timeline_with_clickup(
                     ms_by_id=ms_by_id,
                     ms_by_clickup=ms_by_clickup,
                     pdc_parent=parent_m if is_clickup_subtask else None,
+                    project=project,
                 )
                 if not ts and not te and m.item_type == TimelineItemType.task:
                     ts, te = _span_from_bounds(phase.start_date, phase.target_date)
@@ -417,13 +433,14 @@ def timeline_display_rows_for_project(db: Session, project_id: int) -> list[dict
     """Same ordered rows as GET /milestones (timeline + ClickUp merge)."""
     from sqlalchemy import select
 
-    from app.models import ClickUpTaskCache
+    from app.models import ClickUpTaskCache, Project
     from app.services.progress import (
         build_clickup_lookups,
         clickup_status_mapping_context,
         enrich_milestone_clickup_fields,
     )
 
+    project = db.get(Project, project_id)
     ms_list = list(
         db.scalars(
             select(Milestone)
@@ -452,4 +469,6 @@ def timeline_display_rows_for_project(db: Session, project_id: int) -> list[dict
                 )
             )
             pdc_rows.append(base)
-        return merge_timeline_with_clickup(pdc_rows, ms_list, caches, db=db)
+        return merge_timeline_with_clickup(
+            pdc_rows, ms_list, caches, db=db, project=project
+        )

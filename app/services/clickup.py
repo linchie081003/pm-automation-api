@@ -378,6 +378,7 @@ def _parent_date_span(
     *,
     ms_by_id: dict[int, Milestone],
     ms_by_clickup: dict[str, Milestone],
+    protect_pdc_baseline: bool = False,
 ) -> tuple[date | None, date | None, dict | None]:
     """Timeline milestone dates first, then ClickUp cache (for subtask inherit on sync)."""
     m = ms_by_clickup.get(parent.clickup_task_id or "")
@@ -385,6 +386,8 @@ def _parent_date_span(
         m = ms_by_id.get(parent.milestone_id)
     if m and (m.start_date or m.target_date):
         return m.start_date, m.target_date, None
+    if protect_pdc_baseline and m:
+        return None, None, None
     p_start = _cache_start_date(parent)
     p_due = parent.due_date
     praw = parent.raw_json if isinstance(parent.raw_json, dict) else {}
@@ -573,6 +576,10 @@ def inherit_empty_task_dates_from_parent(
     project_id: int,
     milestones: list[Milestone],
 ) -> int:
+    from app.services.clickup_milestone_dates import timeline_baseline_locked
+
+    project = db.get(Project, project_id)
+    protect = timeline_baseline_locked(project)
     """
     Subtasks use the parent task date span (mulai/selesai = parent).
     Parent dates come from ClickUp; if empty, from linked PDC milestone baseline.
@@ -609,7 +616,10 @@ def inherit_empty_task_dates_from_parent(
         if not parent:
             continue
         p_start, p_due, praw = _parent_date_span(
-            parent, ms_by_id=ms_by_id, ms_by_clickup=ms_by_clickup
+            parent,
+            ms_by_id=ms_by_id,
+            ms_by_clickup=ms_by_clickup,
+            protect_pdc_baseline=protect,
         )
         if not p_start and not p_due:
             continue
@@ -670,8 +680,15 @@ def apply_clickup_dates_to_timeline(db: Session, project_id: int) -> int:
     Persist start/target milestone delivery dari tanggal ClickUp (setelah inherit subtask).
     Phase/task di-roll up dari anak; planned start/end proyek disesuaikan.
     """
+    from app.services.clickup_milestone_dates import (
+        guarded_dates_for_milestone_apply,
+        rollup_milestone_dates_from_children,
+        timeline_baseline_locked,
+    )
     from app.services.progress import build_clickup_lookups
 
+    project = db.get(Project, project_id)
+    protect = timeline_baseline_locked(project)
     milestones = list(
         db.scalars(select(Milestone).where(Milestone.project_id == project_id)).all()
     )
@@ -695,52 +712,61 @@ def apply_clickup_dates_to_timeline(db: Session, project_id: int) -> int:
     updated = 0
     for m in sorted(milestones, key=lambda x: (_milestone_tree_depth(x, by_id), x.id), reverse=True):
         cache = by_tid.get(m.clickup_task_id) if m.clickup_task_id else milestone_cache.get(m.id)
+        start: date | None = None
+        end: date | None = None
+        from_clickup_raw = False
+
+        is_subtask_row = bool(
+            cache
+            and cache.parent_task_id
+            and (m.item_type == TimelineItemType.subtask or m.parent_id)
+        )
+        if is_subtask_row:
+            parent = by_tid.get(cache.parent_task_id)  # type: ignore[arg-type]
+            if not parent and m.parent_id:
+                parent_m = ms_by_id.get(m.parent_id)
+                if parent_m and parent_m.clickup_task_id:
+                    parent = by_tid.get(parent_m.clickup_task_id)
+            if parent:
+                start, end, _ = _parent_date_span(
+                    parent,
+                    ms_by_id=ms_by_id,
+                    ms_by_clickup=ms_by_clickup,
+                    protect_pdc_baseline=protect,
+                )
+            elif m.parent_id:
+                parent_m = ms_by_id.get(m.parent_id)
+                if parent_m and (parent_m.start_date or parent_m.target_date):
+                    start, end = parent_m.start_date, parent_m.target_date
+
+        if not is_subtask_row:
+            roll_start, roll_end = rollup_milestone_dates_from_children(m.id, children_map)
+            if roll_start:
+                start = roll_start
+            if roll_end:
+                end = roll_end
+
+        if not start and not end and cache and not is_subtask_row:
+            start = _cache_start_date(cache)
+            end = cache.due_date
+            from_clickup_raw = bool(start or end)
+
+        if project and from_clickup_raw and (start or end):
+            start, end = guarded_dates_for_milestone_apply(
+                db, project, m, cache, start, end
+            )
+
         applied = False
-        if cache:
-            start: date | None = None
-            end: date | None = None
-            if cache.parent_task_id and (
-                m.item_type == TimelineItemType.subtask
-                or m.parent_id
-            ):
-                parent = by_tid.get(cache.parent_task_id)
-                if not parent and m.parent_id:
-                    parent_m = ms_by_id.get(m.parent_id)
-                    if parent_m and parent_m.clickup_task_id:
-                        parent = by_tid.get(parent_m.clickup_task_id)
-                if parent:
-                    start, end, _ = _parent_date_span(
-                        parent, ms_by_id=ms_by_id, ms_by_clickup=ms_by_clickup
-                    )
-                elif m.parent_id:
-                    parent_m = ms_by_id.get(m.parent_id)
-                    if parent_m and (parent_m.start_date or parent_m.target_date):
-                        start, end = parent_m.start_date, parent_m.target_date
-            if not start and not end:
-                start = _cache_start_date(cache)
-                end = cache.due_date
-            if start or end:
-                applied = _apply_date_span_to_milestone(
-                    m,
-                    start or m.start_date,
-                    end or m.target_date,
-                    db,
-                )
-        if not applied and m.item_type in (
-            TimelineItemType.phase,
-            TimelineItemType.task,
-        ):
-            kids = children_map.get(m.id, [])
-            starts = [k.start_date for k in kids if k.start_date]
-            ends = [k.target_date for k in kids if k.target_date]
-            if starts and ends:
-                applied = _apply_date_span_to_milestone(
-                    m, min(starts), max(ends), db
-                )
+        if start or end:
+            applied = _apply_date_span_to_milestone(
+                m,
+                start or m.start_date,
+                end or m.target_date,
+                db,
+            )
         if applied:
             updated += 1
 
-    project = db.get(Project, project_id)
     if project:
         work = [
             m
@@ -980,6 +1006,7 @@ def sync_project_tasks(db: Session, project: Project) -> dict:
                 headers=headers,
             )
         inherited_dates = inherit_empty_task_dates_from_parent(db, project.id, all_ms)
+        timeline_dates_updated = apply_clickup_dates_to_timeline(db, project.id)
 
         project.clickup_synced_at = datetime.utcnow()
         db.flush()
@@ -992,7 +1019,7 @@ def sync_project_tasks(db: Session, project: Project) -> dict:
             "realigned_phases": realigned_phases,
             "clickup_dates_from_timeline": clickup_dates_from_timeline,
             "clickup_api_date_updates": clickup_api_date_updates,
-            "timeline_dates_updated": 0,
+            "timeline_dates_updated": timeline_dates_updated,
         }
 
 

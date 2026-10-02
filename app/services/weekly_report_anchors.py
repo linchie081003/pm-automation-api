@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 
 from app.models import Project
 from app.services.report_calendar import (
-    active_open_report_date,
     extend_anchors_for_project_end,
     filter_anchors_through_active_week,
     first_schedule_anchor_date,
@@ -83,12 +82,7 @@ def anchor_rows_with_planned(
     anchors: list[date],
     *,
     project_end: date | None = None,
-    today: date | None = None,
 ) -> list[dict]:
-    from datetime import date as date_cls
-
-    today = today or date_cls.today()
-    active_anchor = active_open_report_date(today, project.weekly_report_anchor_weekday)
     last_i = len(anchors) - 1
     out: list[dict] = []
     project_start = project_report_start_date(db, project)
@@ -105,8 +99,6 @@ def anchor_rows_with_planned(
         if i == last_i and project_end:
             as_of = project_end
             status_date = project_end
-        elif rd == active_anchor and today < report_date:
-            as_of = today
         planned = planned_cumulative_at_cutoff(db, project.id, as_of)
         out.append(
             {
