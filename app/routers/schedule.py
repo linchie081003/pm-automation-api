@@ -313,7 +313,11 @@ def list_report_anchors(
 
     def _anchor_row(rd: date) -> dict:
         ps, report_date = period_for_anchor(
-            rd, project.weekly_report_cutoff_offset_days, pstart
+            rd,
+            project.weekly_report_cutoff_offset_days,
+            pstart,
+            report_weekday=project.weekly_report_anchor_weekday,
+            explicit_first_report_date=project.weekly_report_first_anchor_date,
         )
         return {
             "report_date": report_date.isoformat(),
@@ -329,6 +333,7 @@ def list_report_anchors(
         None,
         today,
         project_start_date=pstart,
+        explicit_first_report_date=project.weekly_report_first_anchor_date,
     )
     out_started = [_anchor_row(a) for a in anchors_started]
     from app.services.progress_metrics import active_report_week_context

@@ -32,15 +32,37 @@ def display_period_day_count(period_length_days: int) -> int:
     return max(1, int(period_length_days) + 1)
 
 
+def first_period_report_date(
+    project_start_date: date | None,
+    report_weekday: int | None,
+    explicit_first_report_date: date | None = None,
+) -> date | None:
+    if explicit_first_report_date is not None:
+        return explicit_first_report_date
+    if project_start_date is not None and report_weekday is not None:
+        return first_schedule_report_date(project_start_date, report_weekday)
+    return None
+
+
 def period_for_report_date(
     report_date: date,
     period_length_days: int,
     project_start_date: date | None = None,
+    *,
+    report_weekday: int | None = None,
+    explicit_first_report_date: date | None = None,
 ) -> tuple[date, date]:
     """
     Trailing period: period_start .. report_date (inclusive).
-    period_start = max(report_date - period_length_days, project_start_date).
+    Periode pertama (report_date = first anchor): project_start .. report_date.
+    Periode berikutnya: report_date - period_length_days .. report_date (clamp ≥ project_start).
     """
+    first_rd = first_period_report_date(
+        project_start_date, report_weekday, explicit_first_report_date
+    )
+    if project_start_date is not None and first_rd is not None and report_date == first_rd:
+        return project_start_date, report_date
+
     raw_start = report_date - timedelta(days=period_length_days)
     if project_start_date is not None and raw_start < project_start_date:
         period_start = project_start_date
@@ -53,9 +75,18 @@ def period_for_anchor(
     anchor: date,
     cutoff_offset_days: int,
     project_start_date: date | None = None,
+    *,
+    report_weekday: int | None = None,
+    explicit_first_report_date: date | None = None,
 ) -> tuple[date, date]:
     """Returns (period_start, report_date). `anchor` is the report_date."""
-    return period_for_report_date(anchor, cutoff_offset_days, project_start_date)
+    return period_for_report_date(
+        anchor,
+        cutoff_offset_days,
+        project_start_date,
+        report_weekday=report_weekday,
+        explicit_first_report_date=explicit_first_report_date,
+    )
 
 
 def report_dates_between(
@@ -244,6 +275,7 @@ def resolve_report_period(
     today: date | None = None,
     *,
     project_start_date: date | None = None,
+    explicit_first_report_date: date | None = None,
 ) -> tuple[date, date, date]:
     """
     Returns (report_date, period_start, status_date).
@@ -251,7 +283,13 @@ def resolve_report_period(
     """
     today = today or date.today()
     rd = _normalize_report_date(report_weekday, report_date, today)
-    period_start, end = period_for_report_date(rd, period_length_days, project_start_date)
+    period_start, end = period_for_report_date(
+        rd,
+        period_length_days,
+        project_start_date,
+        report_weekday=report_weekday,
+        explicit_first_report_date=explicit_first_report_date,
+    )
     return end, period_start, end
 
 

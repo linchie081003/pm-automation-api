@@ -43,6 +43,8 @@ def snapshot_key_for_report_date(
         rd,
         project.weekly_report_cutoff_offset_days,
         project_start_date,
+        report_weekday=project.weekly_report_anchor_weekday,
+        explicit_first_report_date=project.weekly_report_first_anchor_date,
     )
     return report_date, report_date
 

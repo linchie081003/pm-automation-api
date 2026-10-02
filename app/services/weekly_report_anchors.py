@@ -97,6 +97,8 @@ def anchor_rows_with_planned(
             rd,
             project.weekly_report_cutoff_offset_days,
             project_start,
+            report_weekday=project.weekly_report_anchor_weekday,
+            explicit_first_report_date=project.weekly_report_first_anchor_date,
         )
         as_of = report_date
         status_date = report_date

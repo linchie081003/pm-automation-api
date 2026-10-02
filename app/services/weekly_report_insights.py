@@ -309,6 +309,7 @@ def weekly_report_preview_insights(
         next_rd,
         cut_off,
         project_start_date=pstart,
+        explicit_first_report_date=project.weekly_report_first_anchor_date,
     )
     tasks_done, tasks_next = task_activity_rows(
         caches, period_start, cut_off, next_start, next_end

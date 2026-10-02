@@ -1054,6 +1054,7 @@ def build_weekly_report_pptx(
         project.weekly_report_cutoff_offset_days,
         report.week_start,
         project_start_date=pstart,
+        explicit_first_report_date=project.weekly_report_first_anchor_date,
     )
     try:
         highlights = _compute_auto_highlights(

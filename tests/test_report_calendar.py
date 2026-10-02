@@ -47,6 +47,32 @@ def test_trailing_period_clamped_to_project_start():
     assert end == rd
 
 
+def test_first_period_spans_project_start_to_first_report_even_with_zero_offset():
+    project_start = date(2026, 9, 30)
+    first_rd = date(2026, 10, 2)  # Jumat pertama setelah start
+    ps, end = period_for_report_date(
+        first_rd,
+        0,
+        project_start,
+        report_weekday=4,
+    )
+    assert ps == project_start
+    assert end == first_rd
+
+
+def test_second_period_uses_trailing_window():
+    project_start = date(2026, 9, 30)
+    second_rd = date(2026, 10, 9)
+    ps, end = period_for_report_date(
+        second_rd,
+        6,
+        project_start,
+        report_weekday=4,
+    )
+    assert end == second_rd
+    assert ps == date(2026, 10, 3)
+
+
 def test_display_period_day_count_inclusive():
     assert display_period_day_count(6) == 7
     assert display_period_day_count(0) == 1

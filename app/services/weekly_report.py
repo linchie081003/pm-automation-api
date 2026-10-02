@@ -160,6 +160,7 @@ def preview_weekly_report(
         project.weekly_report_cutoff_offset_days,
         week_start,
         project_start_date=pstart,
+        explicit_first_report_date=project.weekly_report_first_anchor_date,
     )
     week_start = report_date
     existing = db.scalar(
@@ -301,6 +302,7 @@ def generate_weekly_report(
         project.weekly_report_cutoff_offset_days,
         week_start,
         project_start_date=pstart,
+        explicit_first_report_date=project.weekly_report_first_anchor_date,
     )
     week_start = report_date
     existing = db.scalar(
@@ -482,6 +484,7 @@ def _write_report_files(
         project.weekly_report_cutoff_offset_days,
         report.week_start,
         project_start_date=pstart,
+        explicit_first_report_date=project.weekly_report_first_anchor_date,
     )
     frozen = report.frozen_metrics or {}
     planned = float(frozen.get("planned_pct") or 0)

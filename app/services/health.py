@@ -150,6 +150,8 @@ def compute_health(db: Session, project_id: int, as_of: date | None = None) -> d
                 report_date,
                 project.weekly_report_cutoff_offset_days,
                 pstart,
+                report_weekday=project.weekly_report_anchor_weekday,
+                explicit_first_report_date=project.weekly_report_first_anchor_date,
             )
             out["snapshot_week_start"] = period_start.isoformat()
             out["snapshot_week_end"] = report_date.isoformat()

@@ -147,6 +147,8 @@ def ensure_phase_af_columns(engine: Engine) -> None:
             updated_at TIMESTAMP DEFAULT NOW()
         )
         """,
+        "ALTER TABLE projects ALTER COLUMN weekly_report_cutoff_offset_days SET DEFAULT 6",
+        "UPDATE projects SET weekly_report_cutoff_offset_days = 6 WHERE weekly_report_cutoff_offset_days = 0",
     ]
     enum_values = ["phase", "subtask"]
     doc_type_values = [

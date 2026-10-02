@@ -542,7 +542,7 @@ def _fill_scurve_sheet(
     for col in range(3, 14):
         ws.cell(20, col).value = None
 
-    period_len = int(project.weekly_report_cutoff_offset_days or 0)
+    period_len = int(project.weekly_report_cutoff_offset_days or 6)
     ws["C2"] = project.name
     ws["C3"] = project.client_name or (sph.sph_client if sph else "")
     ws["C4"] = (sph.pic_user_name if sph and sph.pic_user_name else "") or ""
@@ -559,7 +559,13 @@ def _fill_scurve_sheet(
             row16 = project_start or report_date
         else:
             row16 = anchors[i - 1] + timedelta(days=1)
-        _, period_end = period_for_report_date(report_date, period_len, project_start)
+        _, period_end = period_for_report_date(
+            report_date,
+            period_len,
+            project_start,
+            report_weekday=project.weekly_report_anchor_weekday,
+            explicit_first_report_date=project.weekly_report_first_anchor_date,
+        )
         row17 = period_end or report_date
         ws.cell(16, col).value = _as_date(row16)
         ws.cell(17, col).value = _as_date(row17)

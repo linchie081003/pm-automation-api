@@ -43,6 +43,7 @@ def active_report_week_context(
         rd_ref,
         ref,
         project_start_date=pstart,
+        explicit_first_report_date=project.weekly_report_first_anchor_date,
     )
     metrics_as_of = ref if explicit else min(today, status_date)
     return report_date, period_start, status_date, metrics_as_of
@@ -80,6 +81,11 @@ def delivery_week_metrics(
         planned = snap.planned_cumulative_pct
         actual = snap.actual_cumulative_pct
         source = "weekly_snapshot"
+    elif in_progress:
+        # Selaras anchor_rows_with_planned: planned/actual s.d. hari ini di minggu aktif.
+        planned = planned_pct_as_of(plan_rows, metrics_as_of, db=db)
+        actual = resolve_actual_progress(db, project, metrics_as_of)
+        source = "active_week_live"
     elif snap and snap.source == ProgressSnapshotSource.planned_target:
         planned = snap.planned_cumulative_pct
         actual = resolve_actual_progress(db, project, metrics_as_of)
@@ -87,7 +93,7 @@ def delivery_week_metrics(
     else:
         planned = planned_pct_as_of(plan_rows, cut_off, db=db)
         actual = resolve_actual_progress(db, project, metrics_as_of)
-        source = "active_week_live" if in_progress else "live"
+        source = "live"
 
     return planned, actual, cut_off, anchor, source
 

@@ -101,7 +101,7 @@ class Project(Base):
     planned_end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     weekly_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     weekly_report_anchor_weekday: Mapped[int] = mapped_column(Integer, default=4)
-    weekly_report_cutoff_offset_days: Mapped[int] = mapped_column(Integer, default=0)
+    weekly_report_cutoff_offset_days: Mapped[int] = mapped_column(Integer, default=6)
     weekly_report_first_anchor_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     bast_checklist: Mapped[dict] = mapped_column(JSONB, default=dict)
     bast_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
