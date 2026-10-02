@@ -4,10 +4,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import ClickUpTaskCache, Milestone, Project, ProjectSph
+from app.core.timezone import today_jakarta
 
 
 def project_reminders(db: Session, project: Project, horizon_days: int = 14) -> list[dict]:
-    today = date.today()
+    today = today_jakarta()
     horizon = today + timedelta(days=horizon_days)
     items: list[dict] = []
 

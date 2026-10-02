@@ -1,6 +1,7 @@
-from datetime import date, datetime
+from datetime import date
 from unittest.mock import MagicMock
 
+from app.core.timezone import now_jakarta
 from app.models import TimelineItemType
 from app.services.clickup_milestone_dates import (
     guarded_dates_for_milestone_apply,
@@ -9,10 +10,12 @@ from app.services.clickup_milestone_dates import (
     timeline_baseline_locked,
 )
 
+ITEM_SUB = TimelineItemType.subtask
+
 
 def test_timeline_baseline_locked_after_kickoff_confirm():
     p = MagicMock()
-    p.kickoff_timeline_confirmed_at = datetime.utcnow()
+    p.kickoff_timeline_confirmed_at = now_jakarta()
     assert timeline_baseline_locked(p) is True
     p.kickoff_timeline_confirmed_at = None
     assert timeline_baseline_locked(p) is False
@@ -21,7 +24,7 @@ def test_timeline_baseline_locked_after_kickoff_confirm():
 def test_guarded_dates_keep_pdc_when_clickup_shifts():
     project = MagicMock()
     project.id = 1
-    project.kickoff_timeline_confirmed_at = datetime.utcnow()
+    project.kickoff_timeline_confirmed_at = now_jakarta()
 
     milestone = MagicMock()
     milestone.start_date = date(2026, 3, 1)
@@ -78,9 +81,11 @@ def test_rollup_parent_span_from_linked_subtasks():
     parent_id = 10
     sub_a = MagicMock()
     sub_a.clickup_task_id = "cu-a"
+    sub_a.item_type = ITEM_SUB
     sub_a.start_date = date(2026, 4, 1)
     sub_a.target_date = date(2026, 4, 8)
     sub_b = MagicMock()
+    sub_b.item_type = ITEM_SUB
     sub_b.clickup_task_id = "cu-b"
     sub_b.start_date = date(2026, 4, 5)
     sub_b.target_date = date(2026, 4, 12)
@@ -92,7 +97,7 @@ def test_rollup_parent_span_from_linked_subtasks():
 
 def test_raw_clickup_blocked_for_linked_task_when_baseline_set():
     project = MagicMock()
-    project.kickoff_timeline_confirmed_at = datetime.utcnow()
+    project.kickoff_timeline_confirmed_at = now_jakarta()
     linked = MagicMock()
     linked.start_date = date(2026, 1, 1)
     linked.target_date = date(2026, 1, 10)

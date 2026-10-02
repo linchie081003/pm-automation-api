@@ -15,6 +15,7 @@ from app.models import (
 from app.services.pre_kickoff import check_pack_complete
 from app.services.progress import resolve_actual_progress
 from app.services.workflow import next_phase, validate_phase_transition
+from app.core.timezone import today_jakarta
 
 
 def phase_gate_status(db: Session, project: Project) -> dict:
@@ -78,7 +79,7 @@ def phase_gate_status(db: Session, project: Project) -> dict:
         items.append({"id": "po_closing", "label": "Data PO lengkap (BAST / Closing)", "ok": ok_po})
         if not ok_po:
             can_advance = False
-        progress = resolve_actual_progress(db, project, datetime.utcnow().date())
+        progress = resolve_actual_progress(db, project, today_jakarta())
         ok_prog = progress >= 100
         items.append({"id": "progress_100_closing", "label": "Progress Proyek 100%", "ok": ok_prog})
         if not ok_prog:
@@ -91,7 +92,7 @@ def phase_gate_status(db: Session, project: Project) -> dict:
         items.append({"id": "po_bast", "label": "Data PO lengkap (BAST)", "ok": ok_po})
         if not ok_po:
             can_advance = False
-        progress = resolve_actual_progress(db, project, datetime.utcnow().date())
+        progress = resolve_actual_progress(db, project, today_jakarta())
         ok_prog = progress >= 100
         items.append({"id": "progress_100_bast", "label": "Progress Proyek 100%", "ok": ok_prog})
         if not ok_prog:

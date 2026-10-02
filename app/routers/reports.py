@@ -14,6 +14,7 @@ from app.models import Milestone, Project, User, WeeklyReport
 from app.services.activity import log_activity
 from app.services.weekly_report import generate_weekly_report, preview_weekly_report
 from app.config import settings
+from app.core.timezone import today_jakarta
 
 router = APIRouter(tags=["reports"])
 
@@ -77,7 +78,7 @@ def preview_report(
 ):
     ensure_permission(codes, "reports.weekly.generate")
     ensure_project_read(project_id, user, codes, db)
-    ws = anchor_date or week_start or date.today()
+    ws = anchor_date or week_start or today_jakarta()
     try:
         return preview_weekly_report(db, project_id, ws, notes)
     except ValueError as e:
@@ -94,7 +95,7 @@ def generate_report(
 ):
     ensure_permission(codes, "reports.weekly.generate")
     ensure_project_write(project_id, user, codes, db)
-    ws = body.anchor_date or body.week_start or date.today()
+    ws = body.anchor_date or body.week_start or today_jakarta()
     try:
         report = generate_weekly_report(
             db,

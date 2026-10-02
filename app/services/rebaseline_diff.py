@@ -15,6 +15,7 @@ from app.models import (
     TimelineItemType,
 )
 from app.services.schedule import get_current_baseline
+from app.core.timezone import today_jakarta
 
 RebaselineCategory = Literal["delay", "scope_change"]
 
@@ -501,7 +502,7 @@ def recalc_proposed_phases_dates(
             elif project_start:
                 start = project_start
             else:
-                start = p.start_date or date.today()
+                start = p.start_date or today_jakarta()
             target = add_business_days(start, dur, db)
 
         snap = PhaseSnapshot(
@@ -530,7 +531,7 @@ def recalc_proposed_phases_dates(
         if ref in computed_by_ref:
             continue
         dur = max(int(p.duration_days or 1), 1)
-        start = p.start_date or cursor or project_start or date.today()
+        start = p.start_date or cursor or project_start or today_jakarta()
         target = add_business_days(start, dur, db)
         computed_by_ref[ref] = PhaseSnapshot(
             name=p.name,

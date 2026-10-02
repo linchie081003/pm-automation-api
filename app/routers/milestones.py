@@ -24,6 +24,10 @@ from app.services.progress import (
     clickup_status_mapping_context,
     enrich_milestone_clickup_fields,
 )
+from app.services.milestone_schedule_rollup import (
+    milestone_date_anomalies,
+    rollup_live_milestone_dates,
+)
 from app.services.timeline_display import merge_timeline_with_clickup
 from app.services.project_lifecycle import (
     kickoff_milestones_editable,
@@ -80,6 +84,7 @@ class MilestoneOut(BaseModel):
     timeline_seq: int | None = None
     phase_status: str | None = None
     timeline_dates_inherited: bool | None = None
+    schedule_anomalies: list[str] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 
@@ -146,7 +151,17 @@ def list_milestones(
         merged = merge_timeline_with_clickup(
             pdc_rows, ms_list, caches, db=db, project=project
         )
-    return [MilestoneOut(**row) for row in merged]
+        anomalies = milestone_date_anomalies(ms_list)
+        out: list[MilestoneOut] = []
+        for row in merged:
+            rid = row.get("id")
+            extra = (
+                {"schedule_anomalies": anomalies.get(rid, [])}
+                if isinstance(rid, int) and rid > 0
+                else {"schedule_anomalies": []}
+            )
+            out.append(MilestoneOut(**{**row, **extra}))
+        return out
 
 
 @router.post("/projects/{project_id}/milestones", response_model=MilestoneOut)
@@ -244,6 +259,7 @@ def patch_milestone(
         data["item_type"] = TimelineItemType(data["item_type"])
     for k, v in data.items():
         setattr(m, k, v)
+    rollup_live_milestone_dates(db, project_id)
     log_activity(
         db,
         project_id,
@@ -253,7 +269,13 @@ def patch_milestone(
     )
     db.commit()
     db.refresh(m)
-    return MilestoneOut.model_validate(m)
+    ms_list = list(
+        db.scalars(select(Milestone).where(Milestone.project_id == project_id)).all()
+    )
+    anomalies = milestone_date_anomalies(ms_list)
+    payload = MilestoneOut.model_validate(m).model_dump()
+    payload["schedule_anomalies"] = anomalies.get(m.id, [])
+    return MilestoneOut(**payload)
 
 
 class TimelineProjectStartBody(BaseModel):

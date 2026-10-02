@@ -22,6 +22,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def _create_token(subject: str, expires_delta: timedelta, token_type: str) -> str:
+    # JWT ``exp`` uses UTC per RFC 7519 (independent of app display timezone WIB).
     expire = datetime.now(timezone.utc) + expires_delta
     payload = {"sub": subject, "exp": expire, "type": token_type}
     return jwt.encode(payload, settings.jwt_secret, algorithm=ALGORITHM)

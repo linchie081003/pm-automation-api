@@ -12,6 +12,7 @@ from app.models import (
     TimelineItemType,
     TimelineTemplate,
 )
+from app.core.timezone import now_jakarta
 from app.services.draft_timeline import list_draft_rows, recalc_draft_dates
 from app.services.schedule import (
     copy_milestones_to_baseline,
@@ -473,5 +474,5 @@ def finalize_sph_timeline_for_kickoff(db: Session, project: Project) -> None:
         raise ValueError("Simpan termin pembayaran (Term of payment) terlebih dahulu")
     if not list_draft_rows(db, project.id):
         raise ValueError("Generate draft timeline dari template terlebih dahulu")
-    sph.draft_baseline_generated_at = datetime.utcnow()
+    sph.draft_baseline_generated_at = now_jakarta()
     sync_pack_from_sph(db, project)

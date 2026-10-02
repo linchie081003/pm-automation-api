@@ -9,6 +9,7 @@ from app.services.progress import resolve_actual_progress
 from app.services.report_calendar import active_open_report_date, resolve_report_period
 from app.services.schedule import compute_spi, planned_pct_as_of
 from app.services.schedule_window import kickoff_milestones, project_report_start_date
+from app.core.timezone import today_jakarta
 
 
 def snapshot_for_anchor_week(
@@ -32,7 +33,7 @@ def active_report_week_context(
     Minggu laporan aktif: (report_date, period_start, status_date, metrics_as_of).
     status_date == report_date (trailing).
     """
-    today = date.today()
+    today = today_jakarta()
     explicit = as_of is not None
     ref = as_of or today
     rd_ref = active_open_report_date(ref, project.weekly_report_anchor_weekday)

@@ -16,6 +16,7 @@ from app.services.kickoff_timeline import confirm_kickoff_timeline, list_draft_t
 from app.services.pre_kickoff import check_pack_complete, sync_pack_from_sph
 from app.services.activity import log_activity
 from app.services.project_lifecycle import prior_phase_data_locked
+from app.core.timezone import now_jakarta
 
 router = APIRouter(prefix="/projects/{project_id}/pre-kickoff", tags=["pre-kickoff"])
 
@@ -118,7 +119,7 @@ def update_pack(
     for k, v in data.items():
         setattr(pack, k, v)
     pack.is_complete = check_pack_complete(pack)
-    pack.updated_at = datetime.utcnow()
+    pack.updated_at = now_jakarta()
     log_activity(
         db,
         project_id,

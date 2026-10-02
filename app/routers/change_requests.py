@@ -9,6 +9,7 @@ from app.core.deps import get_current_user, get_permission_codes
 from app.core.project_access import ensure_permission, ensure_project_read, ensure_project_write
 from app.database import get_db
 from app.models import ChangeRequestStatus, Project, ProjectChangeRequest, User
+from app.core.timezone import now_jakarta
 
 router = APIRouter(prefix="/projects/{project_id}/change-requests", tags=["change-requests"])
 
@@ -134,7 +135,7 @@ def update_change_request(
     data = body.model_dump(exclude_unset=True)
     for k, v in data.items():
         setattr(row, k, v)
-    row.updated_at = datetime.utcnow()
+    row.updated_at = now_jakarta()
     db.commit()
     db.refresh(row)
     return _out(row)
@@ -156,8 +157,8 @@ def submit_change_request(
     if row.status != ChangeRequestStatus.draft:
         raise HTTPException(status_code=400, detail="CR sudah disubmit")
     row.status = ChangeRequestStatus.submitted
-    row.submitted_at = datetime.utcnow()
-    row.updated_at = datetime.utcnow()
+    row.submitted_at = now_jakarta()
+    row.updated_at = now_jakarta()
     db.commit()
     return _out(row)
 
@@ -182,9 +183,9 @@ def decide_change_request(
         ChangeRequestStatus.approved if body.approve else ChangeRequestStatus.rejected
     )
     row.decided_by_id = user.id
-    row.decided_at = datetime.utcnow()
+    row.decided_at = now_jakarta()
     row.decision_comment = body.comment
-    row.updated_at = datetime.utcnow()
+    row.updated_at = now_jakarta()
     db.commit()
     return _out(row)
 
@@ -205,7 +206,7 @@ def implement_change_request(
     if row.status != ChangeRequestStatus.approved:
         raise HTTPException(status_code=400, detail="CR harus approved sebelum implement")
     row.status = ChangeRequestStatus.implemented
-    row.implemented_at = datetime.utcnow()
-    row.updated_at = datetime.utcnow()
+    row.implemented_at = now_jakarta()
+    row.updated_at = now_jakarta()
     db.commit()
     return _out(row)

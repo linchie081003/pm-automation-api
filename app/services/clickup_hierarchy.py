@@ -17,6 +17,7 @@ from app.services.clickup import (
     is_configured,
 )
 from app.services.schedule_window import kickoff_milestones
+from app.core.timezone import now_jakarta
 
 
 def _folder_name(project: Project) -> str:
@@ -331,7 +332,7 @@ def provision_folder_structure(
 
     if skipped_no_list == 0 or tasks_created > 0 or subtasks_created > 0 or lists_created > 0:
         project.clickup_provision_status = "provisioned"
-    project.clickup_synced_at = datetime.utcnow()
+    project.clickup_synced_at = now_jakarta()
     db.flush()
     return {
         "created_lists": lists_created,

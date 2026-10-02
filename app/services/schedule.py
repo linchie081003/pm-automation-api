@@ -16,6 +16,7 @@ from app.models import (
 from app.services.progress import resolve_actual_progress
 from app.services.report_calendar import period_for_anchor, resolve_report_period, anchor_dates_between
 from app.services.schedule_window import kickoff_milestones, schedule_bounds, scurve_allowed
+from app.core.timezone import today_jakarta
 
 
 def week_bounds(week_start: date) -> tuple[date, date]:
@@ -204,21 +205,10 @@ def planned_progress_rows(db: Session, project_id: int) -> list:
     return milestones
 
 
-def actual_pct_as_of(
-    live_milestones: list[Milestone], as_of: date
-) -> float:
-    prog = _progress_weight_rows(live_milestones)
-    total = sum(m.weight_pct for m in prog) or 0.0
-    if total <= 0:
-        return 0.0
-    done = sum(
-        m.weight_pct
-        for m in prog
-        if m.status == MilestoneStatus.done
-        and m.actual_date
-        and m.actual_date <= as_of
-    )
-    return round(done / total * 100, 2)
+def actual_pct_as_of(live_milestones: list[Milestone], as_of: date) -> float:
+    from app.services.progress import milestone_weighted_actual_pct
+
+    return milestone_weighted_actual_pct(live_milestones, as_of)
 
 
 def compute_spi(actual: float, planned: float) -> float | None:
@@ -674,7 +664,7 @@ def scurve_points(
     if not project_end:
         return []
 
-    today = date.today()
+    today = today_jakarta()
     try:
         anchors, target_rows, _ = anchor_target_series(db, project, cap_at=project_end)
     except ValueError:

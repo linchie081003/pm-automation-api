@@ -49,7 +49,9 @@ def main():
                 )
             )
 
-            today = date.today()
+            from app.core.timezone import today_jakarta
+
+            today = today_jakarta()
             ms = [
                 ("Requirement freeze", today + timedelta(days=14), 20),
                 ("Development", today + timedelta(days=45), 40),

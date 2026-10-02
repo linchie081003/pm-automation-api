@@ -74,7 +74,9 @@ def main():
             print("No user; start app once to seed users.")
             return
 
-        today = date.today()
+        from app.core.timezone import today_jakarta
+
+        today = today_jakarta()
         week0 = monday_of(today - timedelta(days=28))
 
         # Yellow RAG: planned ahead of actual (one milestone done, plan already higher)

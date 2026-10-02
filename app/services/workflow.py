@@ -16,6 +16,7 @@ from app.models import (
     ProgressSnapshot,
     ProgressSnapshotSource,
 )
+from app.core.timezone import now_jakarta, today_jakarta
 from app.services.activity import log_activity
 from app.services.pre_kickoff import check_pack_complete
 from app.services.progress import resolve_actual_progress
@@ -64,7 +65,7 @@ def validate_phase_transition(db: Session, project: Project, target: ProjectPhas
 
         if not po_complete_for_closing(db, project.id):
             raise ValueError(po_closing_error_message())
-        progress = resolve_actual_progress(db, project, datetime.utcnow().date())
+        progress = resolve_actual_progress(db, project, today_jakarta())
         if progress < 100:
             raise ValueError("Progress proyek harus 100% sebelum fase BAST")
         snap = db.scalar(
@@ -82,7 +83,7 @@ def validate_phase_transition(db: Session, project: Project, target: ProjectPhas
 
         if not po_complete_for_closing(db, project.id):
             raise ValueError(po_closing_error_message())
-        progress = resolve_actual_progress(db, project, datetime.utcnow().date())
+        progress = resolve_actual_progress(db, project, today_jakarta())
         if progress < 100:
             raise ValueError("Progress harus 100% sebelum closing")
         checklist = project.bast_checklist or {}
@@ -106,7 +107,7 @@ def ensure_phase_row(db: Session, project_id: int, phase: ProjectPhase) -> None:
             ProjectPhaseRecord(
                 project_id=project_id,
                 phase=phase,
-                started_at=datetime.utcnow(),
+                started_at=now_jakarta(),
             )
         )
 
@@ -119,7 +120,7 @@ def complete_phase_row(db: Session, project_id: int, phase: ProjectPhase) -> Non
         )
     )
     if row and not row.completed_at:
-        row.completed_at = datetime.utcnow()
+        row.completed_at = now_jakarta()
 
 
 def request_phase_transition(
@@ -167,13 +168,13 @@ def apply_phase_transition(db: Session, project: Project, to_phase: ProjectPhase
     ensure_phase_row(db, project.id, to_phase)
 
     if to_phase == ProjectPhase.in_delivery:
-        project.delivery_started_at = datetime.utcnow()
+        project.delivery_started_at = now_jakarta()
         if not project.po_due_date and project.planned_end_date:
             project.po_due_date = project.planned_end_date
         promote_draft_baseline(
             db,
             project.id,
-            monday_of(datetime.utcnow().date()),
+            monday_of(today_jakarta()),
             None,
         )
         if project.clickup_enabled and project.kickoff_timeline_confirmed_at:
@@ -193,7 +194,7 @@ def apply_phase_transition(db: Session, project: Project, to_phase: ProjectPhase
                 )
     if to_phase == ProjectPhase.closed:
         project.status = ProjectStatus.closed
-        project.bast_completed_at = datetime.utcnow()
+        project.bast_completed_at = now_jakarta()
 
 
 def decide_approval(
@@ -210,7 +211,7 @@ def decide_approval(
         raise ValueError("Already decided")
 
     approval.decided_by_id = decider_id
-    approval.decided_at = datetime.utcnow()
+    approval.decided_at = now_jakarta()
     approval.comment = comment
     if approve:
         approval.status = ApprovalStatus.approved

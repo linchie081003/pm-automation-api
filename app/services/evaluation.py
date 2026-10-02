@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import ClickUpTaskCache, Project, ProjectEvaluation, ProjectSph, ResourceRate
+from app.core.timezone import now_jakarta
 
 MS_PER_MD = 8 * 60 * 60 * 1000
 
@@ -33,7 +34,7 @@ def compute_evaluation(db: Session, project_id: int) -> ProjectEvaluation:
         actual_md=actual_md,
         variance_md=variance_md,
         variance_cost=variance_cost,
-        computed_at=datetime.utcnow(),
+        computed_at=now_jakarta(),
     )
     db.add(ev)
     db.flush()

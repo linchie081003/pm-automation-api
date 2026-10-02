@@ -6,6 +6,12 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.timezone import (
+    jakarta_date_to_timestamp_ms,
+    now_jakarta,
+    parse_epoch_to_jakarta_date,
+    today_jakarta,
+)
 from app.models import (
     ClickUpTaskCache,
     IntegrationSettings,
@@ -331,31 +337,8 @@ def ensure_project_clickup_list(db: Session, project: Project) -> str:
 
 
 def _parse_date(value: int | float | str | None) -> date | None:
-    """ClickUp may return due_date as ms timestamp (int) or string."""
-    if value is None or value == "":
-        return None
-    ms: float | None = None
-    if isinstance(value, (int, float)):
-        ms = float(value)
-    elif isinstance(value, str):
-        raw = value.strip()
-        if not raw:
-            return None
-        try:
-            ms = float(raw)
-        except ValueError:
-            try:
-                return date.fromisoformat(raw[:10])
-            except ValueError:
-                return None
-    else:
-        return None
-    if ms <= 0:
-        return None
-    # Seconds vs milliseconds (ClickUp list tasks use ms as string)
-    if ms < 1e11:
-        ms *= 1000.0
-    return datetime.utcfromtimestamp(ms / 1000.0).date()
+    """ClickUp may return due_date as ms timestamp (int) or string (→ Jakarta date)."""
+    return parse_epoch_to_jakarta_date(value)
 
 
 def _task_closed(t: dict) -> bool:
@@ -370,7 +353,7 @@ def _cache_start_date(cache: ClickUpTaskCache) -> date | None:
 
 
 def _date_to_clickup_raw(value: date) -> int:
-    return int(datetime.combine(value, datetime.min.time()).timestamp() * 1000)
+    return jakarta_date_to_timestamp_ms(value)
 
 
 def _parent_date_span(
@@ -682,8 +665,12 @@ def apply_clickup_dates_to_timeline(db: Session, project_id: int) -> int:
     """
     from app.services.clickup_milestone_dates import (
         guarded_dates_for_milestone_apply,
-        rollup_milestone_dates_from_children,
         timeline_baseline_locked,
+    )
+    from app.services.milestone_schedule_rollup import (
+        ROLLUP_CHILD_TYPES,
+        rollup_live_milestone_dates,
+        rollup_span_from_children,
     )
     from app.services.progress import build_clickup_lookups
 
@@ -721,6 +708,9 @@ def apply_clickup_dates_to_timeline(db: Session, project_id: int) -> int:
             and cache.parent_task_id
             and (m.item_type == TimelineItemType.subtask or m.parent_id)
         )
+        kids = children_map.get(m.id, [])
+        has_children = any(k.item_type in ROLLUP_CHILD_TYPES for k in kids)
+
         if is_subtask_row:
             parent = by_tid.get(cache.parent_task_id)  # type: ignore[arg-type]
             if not parent and m.parent_id:
@@ -738,15 +728,9 @@ def apply_clickup_dates_to_timeline(db: Session, project_id: int) -> int:
                 parent_m = ms_by_id.get(m.parent_id)
                 if parent_m and (parent_m.start_date or parent_m.target_date):
                     start, end = parent_m.start_date, parent_m.target_date
-
-        if not is_subtask_row:
-            roll_start, roll_end = rollup_milestone_dates_from_children(m.id, children_map)
-            if roll_start:
-                start = roll_start
-            if roll_end:
-                end = roll_end
-
-        if not start and not end and cache and not is_subtask_row:
+        elif has_children:
+            start, end = rollup_span_from_children(kids)
+        elif cache and not is_subtask_row:
             start = _cache_start_date(cache)
             end = cache.due_date
             from_clickup_raw = bool(start or end)
@@ -767,20 +751,7 @@ def apply_clickup_dates_to_timeline(db: Session, project_id: int) -> int:
         if applied:
             updated += 1
 
-    if project:
-        work = [
-            m
-            for m in milestones
-            if m.item_type
-            in (TimelineItemType.phase, TimelineItemType.task, TimelineItemType.subtask)
-        ]
-        starts = [m.start_date for m in work if m.start_date]
-        targets = [m.target_date for m in work if m.target_date]
-        if starts:
-            project.planned_start_date = min(starts)
-        if targets:
-            project.planned_end_date = max(targets)
-
+    updated += rollup_live_milestone_dates(db, project_id)
     return updated
 
 
@@ -819,7 +790,7 @@ def _upsert_task_cache(
         "clickup_list_id": list_id,
         "milestone_id": milestone_id,
         "raw_json": t,
-        "synced_at": datetime.utcnow(),
+        "synced_at": now_jakarta(),
     }
     if existing:
         for k, v in row_data.items():
@@ -1008,7 +979,7 @@ def sync_project_tasks(db: Session, project: Project) -> dict:
         inherited_dates = inherit_empty_task_dates_from_parent(db, project.id, all_ms)
         timeline_dates_updated = apply_clickup_dates_to_timeline(db, project.id)
 
-        project.clickup_synced_at = datetime.utcnow()
+        project.clickup_synced_at = now_jakarta()
         db.flush()
         return {
             "synced": count,
@@ -1340,7 +1311,7 @@ def _task_recap_body(db: Session, project_id: int) -> dict:
     overdue = sum(
         1
         for t in tasks_flat
-        if not t.get("is_closed") and t.get("due_date") and t["due_date"] < date.today().isoformat()
+        if not t.get("is_closed") and t.get("due_date") and t["due_date"] < today_jakarta().isoformat()
     )
     return {
         "total": total,

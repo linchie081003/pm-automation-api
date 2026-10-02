@@ -778,8 +778,8 @@ def clickup_actual_progress_pct(db: Session, project: Project, as_of: date) -> f
     return round(closed / len(tasks) * 100, 2)
 
 
-def milestone_actual_progress_pct(db: Session, project_id: int, as_of: date) -> float:
-    milestones = db.scalars(select(Milestone).where(Milestone.project_id == project_id)).all()
+def milestone_weighted_actual_pct(milestones: list[Milestone], as_of: date) -> float:
+    """Weighted actual from milestone status (fallback when ClickUp actual unavailable)."""
     from app.services.schedule import _progress_weight_rows
 
     prog = _progress_weight_rows(list(milestones))
@@ -792,6 +792,13 @@ def milestone_actual_progress_pct(db: Session, project_id: int, as_of: date) -> 
         if m.status == MilestoneStatus.done and m.actual_date and m.actual_date <= as_of
     )
     return round(done / total * 100, 2)
+
+
+def milestone_actual_progress_pct(db: Session, project_id: int, as_of: date) -> float:
+    milestones = list(
+        db.scalars(select(Milestone).where(Milestone.project_id == project_id)).all()
+    )
+    return milestone_weighted_actual_pct(milestones, as_of)
 
 
 def resolve_actual_progress(db: Session, project: Project, as_of: date) -> float:

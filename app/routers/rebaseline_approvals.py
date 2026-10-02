@@ -23,6 +23,7 @@ from app.services.rebaseline_diff import (
     recalc_proposed_phases_dates,
 )
 from app.services.schedule import rebaseline_project
+from app.core.timezone import now_jakarta, today_jakarta
 
 router = APIRouter(prefix="/projects/{project_id}/rebaseline", tags=["rebaseline"])
 global_router = APIRouter(prefix="/rebaseline", tags=["rebaseline"])
@@ -313,7 +314,7 @@ def client_ack(
     if not req or req.project_id != project_id:
         raise HTTPException(status_code=404, detail="Not found")
     req.client_acknowledged = body.client_acknowledged
-    req.client_ack_at = datetime.utcnow() if body.client_acknowledged else None
+    req.client_ack_at = now_jakarta() if body.client_acknowledged else None
     db.commit()
     return {"client_acknowledged": req.client_acknowledged}
 
@@ -335,7 +336,7 @@ def decide(
     if body.approve and not req.client_acknowledged:
         raise HTTPException(status_code=400, detail="Client acknowledgment required")
     req.decided_by_id = user.id
-    req.decided_at = datetime.utcnow()
+    req.decided_at = now_jakarta()
     req.comment = body.comment
     if body.approve:
         pc = req.proposed_changes or {}
@@ -343,7 +344,7 @@ def decide(
         if not proposed:
             raise HTTPException(status_code=400, detail="Missing proposed_phases in request")
         apply_proposed_phases_to_live(db, project_id, proposed)
-        eff = date.today()
+        eff = today_jakarta()
         if isinstance(pc.get("effective_from"), str):
             eff = date.fromisoformat(pc["effective_from"][:10])
         baseline = rebaseline_project(db, project_id, eff, req.reason, user.id)

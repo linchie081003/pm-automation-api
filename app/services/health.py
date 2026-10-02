@@ -7,6 +7,7 @@ from app.models import Project, ProjectHealthConfig, ProjectPhase, ProjectStatus
 from app.services.progress_metrics import delivery_week_metrics, snapshot_for_anchor_week
 from app.services.schedule import compute_spi, get_current_baseline
 from app.services.schedule_window import project_health_metrics_enabled
+from app.core.timezone import today_jakarta
 
 
 def rag_from_spi(spi: float, cfg: ProjectHealthConfig) -> str:
@@ -52,7 +53,7 @@ def _project_schedule_dates(db: Session, project: Project) -> tuple[str | None, 
 
 
 def compute_health(db: Session, project_id: int, as_of: date | None = None) -> dict:
-    as_of = as_of or date.today()
+    as_of = as_of or today_jakarta()
     project = db.get(Project, project_id)
     cfg = db.get(ProjectHealthConfig, project_id)
     if not cfg:
@@ -90,7 +91,7 @@ def compute_health(db: Session, project_id: int, as_of: date | None = None) -> d
 
     baseline = get_current_baseline(db, project_id)
     planned, actual, status_cutoff, anchor, health_source = delivery_week_metrics(
-        db, project, as_of=as_of if as_of != date.today() else None
+        db, project, as_of=as_of if as_of != today_jakarta() else None
     )
     snap = snapshot_for_anchor_week(db, project_id, anchor)
 

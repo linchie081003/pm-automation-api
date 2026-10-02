@@ -26,6 +26,7 @@ from app.schemas.schedule import (
     SaveWeekResponse,
     ScurvePoint,
 )
+from app.core.timezone import today_jakarta
 from app.services.schedule import (
     milestone_chart_points,
     rebaseline_markers,
@@ -273,7 +274,7 @@ def list_report_anchors(
     if not project:
         raise HTTPException(status_code=404, detail="Not found")
 
-    today = date.today()
+    today = today_jakarta()
     schedule_warning: str | None = None
     try:
         project_end, _ = project_report_end_date(db, project_id)

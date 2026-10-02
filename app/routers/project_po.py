@@ -9,6 +9,7 @@ from app.core.project_access import ensure_permission, ensure_project_read, ensu
 from app.database import get_db
 from app.models import Project, ProjectPo, User
 from app.services.project_lifecycle import po_form_editable
+from app.core.timezone import now_jakarta
 
 router = APIRouter(prefix="/projects/{project_id}/po", tags=["project-po"])
 
@@ -139,7 +140,7 @@ def update_po(
         project.po_due_date = row.po_due_date
     if project and row.po_sub_total is not None:
         project.contract_value = row.po_sub_total
-    row.updated_at = datetime.utcnow()
+    row.updated_at = now_jakarta()
     db.commit()
     db.refresh(row)
     return _out(row, project)

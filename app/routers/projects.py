@@ -34,6 +34,7 @@ from app.services.progress import resolve_actual_progress
 from app.services.project_code import next_project_code
 from app.services.project_delete import delete_project, validate_project_deletion
 from app.services.project_duplicate import duplicate_project
+from app.core.timezone import today_jakarta
 from app.services.workflow import (
     apply_phase_transition,
     ensure_phase_row,
@@ -575,7 +576,7 @@ def close_project(
         apply_phase_transition(db, p, ProjectPhase.closed)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    progress = resolve_actual_progress(db, p, datetime.utcnow().date())
+    progress = resolve_actual_progress(db, p, today_jakarta())
     log_activity(
         db,
         project_id,

@@ -1,5 +1,6 @@
 """Weekly report calendar: report_date (end of period) + trailing period_start."""
 from datetime import date, timedelta
+from app.core.timezone import today_jakarta
 
 
 def report_date_on_or_before(d: date, weekday: int) -> date:
@@ -223,7 +224,7 @@ def filter_report_dates_through_active_week(
 ) -> list[date]:
     if not report_dates:
         return []
-    today = today or date.today()
+    today = today or today_jakarta()
     active = active_open_report_date(today, weekday)
     if report_dates[0] > active:
         return []
@@ -281,7 +282,7 @@ def resolve_report_period(
     Returns (report_date, period_start, status_date).
     status_date == report_date (trailing end of period; alias for legacy cut_off).
     """
-    today = today or date.today()
+    today = today or today_jakarta()
     rd = _normalize_report_date(report_weekday, report_date, today)
     period_start, end = period_for_report_date(
         rd,
@@ -299,7 +300,7 @@ def ensure_snapshot_active_week_only(
     report_date: date,
     today: date | None = None,
 ) -> date:
-    today = today or date.today()
+    today = today or today_jakarta()
     active_rd = active_open_report_date(today, report_weekday)
     rd, _, _ = resolve_report_period(
         report_weekday,
@@ -326,7 +327,7 @@ def ensure_weekly_period_has_started(
     report_date: date,
     today: date | None = None,
 ) -> date:
-    today = today or date.today()
+    today = today or today_jakarta()
     active_rd = active_open_report_date(today, report_weekday)
     rd, period_start, _ = resolve_report_period(
         report_weekday,

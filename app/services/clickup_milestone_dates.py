@@ -98,20 +98,10 @@ def rollup_milestone_dates_from_children(
     milestone_id: int,
     children_map: dict[int, list[Milestone]],
 ) -> tuple[date | None, date | None]:
-    """
-    Task/phase dengan anak ter-link: min start / max target dari subtask (PDC),
-    bukan tanggal mentah task parent di ClickUp.
-    """
+    from app.services.milestone_schedule_rollup import rollup_span_from_children
+
     kids = children_map.get(milestone_id, [])
-    if not kids:
-        return None, None
-    rollup_kids = [k for k in kids if k.clickup_task_id] or kids
-    starts = [k.start_date for k in rollup_kids if k.start_date]
-    ends = [k.target_date for k in rollup_kids if k.target_date]
-    return (
-        min(starts) if starts else None,
-        max(ends) if ends else None,
-    )
+    return rollup_span_from_children(kids)
 
 
 def raw_clickup_cache_allowed_for_linked_task(

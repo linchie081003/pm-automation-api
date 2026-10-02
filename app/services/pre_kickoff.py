@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.models import PreKickoffPack, Project, ProjectSph
 from app.services.sph import sync_sph_text_from_items
+from app.core.timezone import now_jakarta
 
 
 def sync_pack_from_sph(db: Session, project: Project) -> PreKickoffPack:
@@ -40,7 +41,7 @@ def sync_pack_from_sph(db: Session, project: Project) -> PreKickoffPack:
             lines = [x["text"] for x in pack.deliverables_items if x.get("text")]
             if lines:
                 pack.deliverables = "\n".join(f"- {x}" for x in lines)
-    pack.updated_at = datetime.utcnow()
+    pack.updated_at = now_jakarta()
     db.flush()
     return pack
 

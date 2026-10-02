@@ -35,6 +35,7 @@ from app.services.templates.loader import copy_template
 from app.services.templates.placeholders import build_mapping, replace_in_pptx, replace_in_xlsx
 from app.services.weekly_report_pptx import build_weekly_report_pptx
 from app.services.yyyymmdd_report_excel import export_yyyymmdd_workbook
+from app.core.timezone import today_jakarta
 
 
 def _ensure_clickup_ready(db: Session, project: Project) -> None:
@@ -92,7 +93,7 @@ def _resolve_preview_metrics(
     Returns planned, actual, spi, health, metrics_source, matches_project_health.
     """
     snap = snapshot_for_anchor_week(db, project.id, report_date)
-    active_rd = active_open_report_date(date.today(), project.weekly_report_anchor_weekday)
+    active_rd = active_open_report_date(today_jakarta(), project.weekly_report_anchor_weekday)
     is_active_period = report_date == active_rd
 
     if existing and existing.frozen_metrics:
@@ -314,7 +315,7 @@ def generate_weekly_report(
     if existing and not regenerate:
         return existing
 
-    active_rd = active_open_report_date(date.today(), project.weekly_report_anchor_weekday)
+    active_rd = active_open_report_date(today_jakarta(), project.weekly_report_anchor_weekday)
     if report_date == active_rd:
         snap = save_weekly_progress(
             db, project_id, week_start, ProgressSnapshotSource.weekly_report

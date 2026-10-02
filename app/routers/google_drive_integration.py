@@ -14,6 +14,7 @@ from app.config import settings
 from app.core.deps import PermissionChecker, get_current_user
 from app.database import get_db
 from app.models import IntegrationSettings, User
+from app.core.timezone import now_jakarta
 from app.services.google_drive import (
     drive_configured,
     format_drive_api_error,
@@ -68,7 +69,7 @@ def _persist_service_account(db: Session, data: dict, email: str) -> None:
     row = _integration_row(db)
     row.google_drive_service_account_json = json.dumps(data)
     row.google_drive_service_account_email = email
-    row.google_drive_configured_at = datetime.utcnow()
+    row.google_drive_configured_at = now_jakarta()
     db.commit()
 
 

@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
+from app.core.timezone import parse_epoch_to_jakarta_date
 from app.models import ClickUpTaskCache, Milestone, TimelineItemType
 from app.services.progress import build_clickup_lookups, row_clickup_progress_pct
 from app.services.report_calendar import resolve_report_period
@@ -17,16 +18,10 @@ def _ms_to_date(value) -> date | None:
     from app.services.clickup import _parse_date
 
     if isinstance(value, (int, float)):
-        ts = int(value)
-        if ts > 10_000_000_000:
-            ts //= 1000
-        return datetime.utcfromtimestamp(ts).date()
+        return parse_epoch_to_jakarta_date(value)
     if isinstance(value, str):
         if value.isdigit():
-            ts = int(value)
-            if ts > 10_000_000_000:
-                ts //= 1000
-            return datetime.utcfromtimestamp(ts).date()
+            return parse_epoch_to_jakarta_date(value)
         return _parse_date(value)
     return None
 

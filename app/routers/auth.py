@@ -18,6 +18,7 @@ from app.database import get_db
 from app.models import User
 from app.schemas.auth import LoginRequest, LoginResponse, MeResponse, RefreshRequest, RoleBrief
 from app.services.authorization import load_user_permissions
+from app.core.timezone import now_jakarta
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -43,7 +44,7 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account inactive")
-    user.last_login = datetime.utcnow()
+    user.last_login = now_jakarta()
     db.commit()
     access = create_access_token(user.id)
     refresh = create_refresh_token(user.id)

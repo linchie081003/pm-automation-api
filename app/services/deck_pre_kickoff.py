@@ -10,6 +10,7 @@ from app.models import Document, DocumentType, Milestone, PreKickoffPack, Projec
 from app.services.pre_kickoff import pack_from_sph, sync_pack_from_sph
 from app.services.templates.loader import copy_template
 from app.services.templates.placeholders import build_mapping, replace_in_pptx
+from app.core.timezone import now_jakarta
 
 
 def build_pre_kickoff_deck_path(db: Session, project: Project, preview: bool = False) -> Path:
@@ -54,6 +55,6 @@ def generate_pre_kickoff_deck(db: Session, project: Project, user_id: int) -> Do
     if not doc:
         raise FileNotFoundError("Failed to register pre kickoff deck")
     if pack:
-        pack.deck_generated_at = datetime.utcnow()
+        pack.deck_generated_at = now_jakarta()
     db.flush()
     return doc

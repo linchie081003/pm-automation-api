@@ -253,37 +253,11 @@ def schedule_draft_milestone_rows(
         _register_span(starts, ends, row)
         pending.pop(0)
 
-    # Bottom-up rollup for containers that have schedulable children
-    depth_cache: dict[int, int] = {}
+    from app.services.milestone_schedule_rollup import rollup_container_dates_bottom_up
 
-    def depth(rid: int) -> int:
-        if rid in depth_cache:
-            return depth_cache[rid]
-        r = by_id[rid]
-        if not r.parent_id:
-            depth_cache[rid] = 0
-            return 0
-        depth_cache[rid] = depth(r.parent_id) + 1
-        return depth_cache[rid]
-
-    for row in sorted(sched, key=lambda x: (-depth(x.id), x.sort_order, x.id)):
-        kids = _children(by_id, row.id)
-        weighted = [
-            c
-            for c in kids
-            if c.item_type
-            in (TimelineItemType.phase, TimelineItemType.task, TimelineItemType.subtask)
-        ]
-        if not weighted:
-            continue
-        cs = [c.start_date for c in weighted if c.start_date]
-        ce = [c.target_date for c in weighted if c.target_date]
-        if cs and ce:
-            row.start_date = min(cs)
-            row.target_date = max(ce)
-            row.duration_days = count_business_days_inclusive(
-                row.start_date, row.target_date, db
-            )
+    rollup_container_dates_bottom_up(sched, db, by_id=by_id)
+    for row in sched:
+        if row.start_date and row.target_date:
             _register_span(starts, ends, row)
 
     gates = [r for r in rows if r.item_type == TimelineItemType.milestone]

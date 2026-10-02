@@ -4,10 +4,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Project
+from app.core.timezone import today_jakarta
 
 
 def next_project_code(db: Session) -> str:
-    year = date.today().year
+    year = today_jakarta().year
     prefix = f"PDC-{year}-"
     rows = db.scalars(select(Project.code).where(Project.code.like(f"{prefix}%"))).all()
     max_seq = 0

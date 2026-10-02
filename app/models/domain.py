@@ -17,6 +17,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.timezone import now_jakarta
 from app.database import Base
 
 
@@ -118,7 +119,7 @@ class Project(Base):
     methodology: Mapped[ProjectMethodology] = mapped_column(
         Enum(ProjectMethodology), default=ProjectMethodology.waterfall
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_jakarta)
 
     milestones: Mapped[list["Milestone"]] = relationship(back_populates="project")
     baselines: Mapped[list["ScheduleBaseline"]] = relationship(back_populates="project")
@@ -167,7 +168,7 @@ class ScheduleBaseline(Base):
     is_current: Mapped[bool] = mapped_column(Boolean, default=True)
     is_draft: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_jakarta)
 
     project: Mapped["Project"] = relationship(back_populates="baselines")
     milestone_rows: Mapped[list["ScheduleBaselineMilestone"]] = relationship(
@@ -220,7 +221,7 @@ class ProgressSnapshot(Base):
     weekly_report_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("weekly_reports.id"), nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_jakarta)
 
     project: Mapped["Project"] = relationship(back_populates="progress_snapshots")
 
@@ -240,7 +241,7 @@ class WeeklyReport(Base):
     summary: Mapped[dict] = mapped_column(JSONB, default=dict)
     frozen_metrics: Mapped[dict] = mapped_column(JSONB, default=dict)
     generated_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    generated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    generated_at: Mapped[datetime] = mapped_column(DateTime, default=now_jakarta)
     xlsx_path: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     pptx_path: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
 
@@ -258,7 +259,7 @@ class TimelineTemplate(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     items: Mapped[list] = mapped_column(JSONB, default=list)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_jakarta)
 
 
 class ProjectRosterEntry(Base):
@@ -269,7 +270,7 @@ class ProjectRosterEntry(Base):
     full_name: Mapped[str] = mapped_column(String(255))
     email: Mapped[str] = mapped_column(String(255), default="")
     role_label: Mapped[str] = mapped_column(String(128), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_jakarta)
 
 
 class ProjectHealthConfig(Base):
@@ -310,7 +311,7 @@ class ApprovalRequest(Base):
     decided_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_jakarta)
 
 
 class Document(Base):
@@ -325,7 +326,7 @@ class Document(Base):
     external_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     is_template: Mapped[bool] = mapped_column(Boolean, default=False)
     uploaded_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_jakarta)
 
 
 class ActivityLog(Base):
@@ -336,7 +337,7 @@ class ActivityLog(Base):
     user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     action: Mapped[str] = mapped_column(String(128))
     detail: Mapped[dict] = mapped_column(JSONB, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_jakarta)
 
 
 class ProjectHealthSnapshot(Base):
@@ -408,7 +409,7 @@ class ClickUpTaskCache(Base):
     clickup_list_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     milestone_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     raw_json: Mapped[dict] = mapped_column(JSONB, default=dict)
-    synced_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    synced_at: Mapped[datetime] = mapped_column(DateTime, default=now_jakarta)
 
     __table_args__ = (
         UniqueConstraint("project_id", "clickup_task_id", name="uq_clickup_task"),
@@ -442,7 +443,7 @@ class ProjectSph(Base):
     timeline_template_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("timeline_templates.id"), nullable=True
     )
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_jakarta)
 
 
 class ProjectPo(Base):
@@ -458,7 +459,7 @@ class ProjectPo(Base):
     po_payment_terms: Mapped[list] = mapped_column(JSONB, default=list)
     service_items: Mapped[list] = mapped_column(JSONB, default=list)
     po_sub_total: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_jakarta)
 
 
 class PreKickoffPack(Base):
@@ -477,7 +478,7 @@ class PreKickoffPack(Base):
     next_activities: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_complete: Mapped[bool] = mapped_column(Boolean, default=False)
     deck_generated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_jakarta)
 
 
 class ChangeRequestStatus(str, enum.Enum):
@@ -509,8 +510,8 @@ class ProjectChangeRequest(Base):
     decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     decision_comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     implemented_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_jakarta)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_jakarta)
 
 
 class RebaselineRequest(Base):
@@ -533,7 +534,7 @@ class RebaselineRequest(Base):
     decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     resulting_baseline_version: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_jakarta)
 
 
 class ResourceRate(Base):
@@ -554,4 +555,4 @@ class ProjectEvaluation(Base):
     actual_md: Mapped[float] = mapped_column(Float, default=0.0)
     variance_md: Mapped[float] = mapped_column(Float, default=0.0)
     variance_cost: Mapped[float] = mapped_column(Float, default=0.0)
-    computed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    computed_at: Mapped[datetime] = mapped_column(DateTime, default=now_jakarta)

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models import Milestone, MilestoneStatus, Project, ProjectPo, ScheduleBaselineMilestone
 from app.services.draft_timeline import list_draft_rows
 from app.services.schedule import get_draft_baseline
+from app.core.timezone import now_jakarta
 
 
 def list_draft_timeline(db: Session, project_id: int) -> list[dict]:
@@ -94,7 +95,7 @@ def confirm_kickoff_timeline(db: Session, project: Project) -> int:
         if not progress:
             break
         pending = next_pending
-    confirmed_at = datetime.utcnow()
+    confirmed_at = now_jakarta()
     project.kickoff_timeline_confirmed_at = confirmed_at
     live_dates = [m.start_date for m in db.scalars(
         select(Milestone).where(Milestone.project_id == project.id)

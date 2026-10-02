@@ -1,8 +1,6 @@
 """Fill yyyymmdd-Template.xlsx (S-curve + milestone bar chart sheets) from PDC data."""
 from __future__ import annotations
 
-import re
-from collections import defaultdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -13,9 +11,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import (
+    ClickUpTaskCache,
     IntegrationSettings,
     Milestone,
-    MilestoneStatus,
     ProgressSnapshot,
     ProgressSnapshotSource,
     Project,
@@ -24,6 +22,16 @@ from app.models import (
     ProjectSph,
     TimelineItemType,
     WeeklyReport,
+)
+from app.services.progress import build_clickup_lookups, clickup_status_mapping_context
+from app.services.timeline_report_metrics import (
+    ReportRowProgressContext,
+    display_row_actual_pct,
+    display_row_duration_days,
+    display_row_planned_fraction,
+    display_row_planned_week_fraction,
+    display_row_weight_fraction,
+    include_in_report_timeline_list,
 )
 from app.services.report_calendar import (
     extend_anchors_for_project_end,
@@ -39,6 +47,7 @@ from app.services.schedule_window import (
 )
 from app.services.templates.loader import copy_template
 from app.services.timeline_display import timeline_display_rows_for_project
+from app.core.timezone import today_jakarta
 
 _SCURVE_ROMAN = (
     "I",
@@ -63,7 +72,6 @@ _TASK_FONT = Font(size=11)
 _SCURVE_FIRST_WEEK_COL = 16  # P
 _SCURVE_LAST_WEEK_COL = 63  # BK
 _SCURVE_TYPE_COL = 14  # N — label tipe (phase / milestone / task / subtask)
-_TASK_FORMULA_TEMPLATE_ROW = 21
 _LOG_MINGGUAN_FIRST_WEEK_ROW = 8
 _LOG_MINGGUAN_LAST_WEEK_ROW = 55
 _SCURVE_CLEAR_B74_E112 = (74, 112, 2, 5)  # rows, cols B–E
@@ -90,20 +98,8 @@ def _parse_row_date(val: object) -> date | None:
         return None
 
 
-def _milestone_actual_fraction(m: Milestone) -> float:
-    if m.status == MilestoneStatus.done:
-        return 1.0
-    return 0.0
-
-
-def _row_actual_fraction(row: dict, ms_by_id: dict[int, Milestone]) -> float:
-    pct = row.get("clickup_progress_pct")
-    if pct is not None:
-        return min(1.0, max(0.0, float(pct) / 100.0))
-    rid = row.get("id")
-    if isinstance(rid, int) and rid in ms_by_id:
-        return _milestone_actual_fraction(ms_by_id[rid])
-    return 0.0
+def _row_actual_fraction(row: dict, ctx: ReportRowProgressContext, as_of: date) -> float:
+    return display_row_actual_pct(ctx, row, as_of) / 100.0
 
 
 def _row_dates(row: dict) -> tuple[date | None, date | None]:
@@ -133,14 +129,6 @@ def _excel_timeline_rows(display: list[dict]) -> list[tuple[str | None, dict, bo
     return out
 
 
-def _row_key(row: dict) -> int | str | None:
-    rid = row.get("id")
-    if rid is not None:
-        return rid
-    cu = row.get("clickup_task_id")
-    return f"cu:{cu}" if cu else None
-
-
 def _scurve_type_label(row: dict) -> str:
     it = row.get("item_type") or ""
     if it == TimelineItemType.phase.value:
@@ -154,118 +142,35 @@ def _scurve_type_label(row: dict) -> str:
     return str(it).capitalize() if it else ""
 
 
-def _distributed_weight_fractions(rows: list[dict]) -> list[float]:
-    """
-    Phase: weight_pct.
-    Task: bobot phase / jumlah task langsung di bawah phase.
-    Subtask: bobot task induk / jumlah subtask langsung.
-    Milestone: weight_pct (biasanya 0).
-    """
-    by_parent: dict[int | str, list[dict]] = defaultdict(list)
-    frac: dict[int | str, float] = {}
-
-    for row in rows:
-        it = row.get("item_type") or ""
-        if it == TimelineItemType.phase.value:
-            key = _row_key(row)
-            if key is not None:
-                frac[key] = float(row.get("weight_pct") or 0) / 100.0
-            continue
-        pid = row.get("parent_id")
-        if pid is None:
-            pid = row.get("phase_id")
-        if pid is not None:
-            by_parent[pid].append(row)
-
-    for row in rows:
-        if row.get("item_type") != TimelineItemType.phase.value:
-            continue
-        phase_id = row.get("id")
-        phase_key = _row_key(row)
-        if phase_key is None:
-            continue
-        phase_w = frac.get(phase_key, 0.0)
-        tasks = [
-            t
-            for t in by_parent.get(phase_id, [])
-            if t.get("item_type") == TimelineItemType.task.value
-        ]
-        if not tasks:
-            continue
-        task_share = phase_w / len(tasks)
-        for t in tasks:
-            tkey = _row_key(t)
-            if tkey is None:
-                continue
-            frac[tkey] = task_share
-            tid = t.get("id")
-            subs = [
-                s
-                for s in by_parent.get(tid, [])
-                if s.get("item_type") == TimelineItemType.subtask.value
-            ]
-            if not subs:
-                continue
-            sub_share = task_share / len(subs)
-            for s in subs:
-                skey = _row_key(s)
-                if skey is not None:
-                    frac[skey] = sub_share
-
-    for row in rows:
-        it = row.get("item_type") or ""
-        key = _row_key(row)
-        if key is None:
-            continue
-        if it == TimelineItemType.milestone.value:
-            frac[key] = float(row.get("weight_pct") or 0) / 100.0
-        elif it not in (TimelineItemType.phase.value,) and key not in frac:
-            frac[key] = 0.0
-
-    return [frac.get(_row_key(row), 0.0) for row in rows]
-
-
-def _formula_row(formula: str, template_row: int, target_row: int) -> str:
-    return re.sub(rf"(?<![0-9]){template_row}(?![0-9])", str(target_row), formula)
-
-
-def _snapshot_task_formulas(ws, template_row: int) -> dict[int, str]:
-    out: dict[int, str] = {}
-    for col in range(6, _SCURVE_LAST_WEEK_COL + 1):
-        val = ws.cell(template_row, col).value
-        if isinstance(val, str) and val.startswith("="):
-            out[col] = val
-    return out
-
-
-def _apply_task_formulas(ws, r: int, templates: dict[int, str], template_row: int) -> None:
-    for col, formula in templates.items():
-        ws.cell(r, col).value = _formula_row(formula, template_row, r)
-
-
-def _week_allocation_formula(col: int, row: int) -> str:
-    cl = get_column_letter(col)
-    return (
-        f"=IF(AND($D{row}<={cl}$17,$E{row}>={cl}$16),"
-        f"$C{row}*NETWORKDAYS(MAX($D{row},{cl}$16),MIN($E{row},{cl}$17),Hari_Libur)/"
-        f"NETWORKDAYS($D{row},$E{row},Hari_Libur),0)"
-    )
-
-
-def _apply_phase_calculation_row(
+def _write_scurve_row_metrics_static(
     ws,
     r: int,
     *,
-    task_formulas: dict[int, str],
-    template_row: int,
-    week_cols: int,
-    progress_k: float,
+    row: dict,
+    weight_frac: float,
+    cut_off: date,
+    week_periods: list[tuple[date, date]],
+    ctx: ReportRowProgressContext,
 ) -> None:
-    """Linear target, actual, deviation, and weekly columns — phase rows only."""
-    ws.cell(r, 11).value = progress_k
-    _apply_task_formulas(ws, r, task_formulas, template_row)
-    for col in range(_SCURVE_FIRST_WEEK_COL, _SCURVE_FIRST_WEEK_COL + week_cols):
-        ws.cell(r, col).value = _week_allocation_formula(col, r)
+    """Planned/actual from Timeline Engine — static values, no NETWORKDAYS formulas."""
+    planned_frac = display_row_planned_fraction(row, cut_off, ctx.db)
+    actual_frac = _row_actual_fraction(row, ctx, cut_off)
+    dur = display_row_duration_days(row, ctx.db)
+    ws.cell(r, 8).value = dur
+    ws.cell(r, 9).value = round(planned_frac, 6)
+    ws.cell(r, 10).value = round(weight_frac * planned_frac, 6)
+    ws.cell(r, 11).value = round(actual_frac, 6)
+    ws.cell(r, 12).value = round(weight_frac * (actual_frac - planned_frac), 6)
+    ws.cell(r, 13).value = round(weight_frac * actual_frac, 6)
+    ws.cell(r, 15).value = round(weight_frac * planned_frac, 6)
+    for wi, (period_start, period_end) in enumerate(week_periods):
+        col = _SCURVE_FIRST_WEEK_COL + wi
+        ws.cell(r, col).value = round(
+            display_row_planned_week_fraction(
+                row, weight_frac, period_start, period_end, ctx.db
+            ),
+            6,
+        )
 
 
 def _pct_as_excel_fraction(value: float) -> float:
@@ -448,10 +353,15 @@ def export_yyyymmdd_workbook(
     _trim_workbook_sheets(wb)
 
     display = timeline_display_rows_for_project(db, project.id)
-    ms_by_id = {m.id: m for m in kickoff_milestones(db, project.id) or milestones}
+    ms_list = kickoff_milestones(db, project.id) or milestones
+    ms_by_id = {m.id: m for m in ms_list}
+    caches = list(
+        db.scalars(
+            select(ClickUpTaskCache).where(ClickUpTaskCache.project_id == project.id)
+        ).all()
+    )
     excel_rows = _excel_timeline_rows(display)
-    row_payloads = [row for _, row, _ in excel_rows]
-    weight_fractions = _distributed_weight_fractions(row_payloads)
+    weight_fractions = [display_row_weight_fraction(row) for _, row, _ in excel_rows]
 
     sph = db.get(ProjectSph, project.id)
     po = db.get(ProjectPo, project.id)
@@ -468,20 +378,31 @@ def export_yyyymmdd_workbook(
     deviation_pp = actual_pct - planned_pct
 
     scurve_data_start = 21
-    phase_scurve_rows = _fill_scurve_sheet(
-        wb["SCurve"],
-        project=project,
-        sph=sph,
-        po=po,
-        excel_rows=excel_rows,
-        weight_fractions=weight_fractions,
-        ms_by_id=ms_by_id,
-        anchor=anchor,
-        cut_off=cut_off,
-        anchors=anchors,
-        project_start=project_start,
-        data_start=scurve_data_start,
-    )
+    with clickup_status_mapping_context(db):
+        tasks_by_id, milestone_cache = build_clickup_lookups(ms_list, caches)
+        progress_ctx = ReportRowProgressContext(
+            db=db,
+            project=project,
+            milestones=ms_list,
+            ms_by_id=ms_by_id,
+            tasks_by_id=tasks_by_id,
+            milestone_cache=milestone_cache,
+            caches=caches,
+        )
+        phase_scurve_rows = _fill_scurve_sheet(
+            wb["SCurve"],
+            project=project,
+            sph=sph,
+            po=po,
+            excel_rows=excel_rows,
+            weight_fractions=weight_fractions,
+            progress_ctx=progress_ctx,
+            anchor=anchor,
+            cut_off=cut_off,
+            anchors=anchors,
+            project_start=project_start,
+            data_start=scurve_data_start,
+        )
     health_cfg = db.get(ProjectHealthConfig, project.id)
     _fill_log_mingguan(
         wb["Log_Mingguan"] if "Log_Mingguan" in wb.sheetnames else None,
@@ -504,13 +425,16 @@ def export_yyyymmdd_workbook(
     _fill_milestone_progress_sheet(
         wb["milestone progress"] if "milestone progress" in wb.sheetnames else None,
         phase_scurve_rows=phase_scurve_rows,
+        progress_ctx=progress_ctx,
+        cut_off=cut_off,
     )
     _fill_libur_sheet(wb["Libur"] if "Libur" in wb.sheetnames else None, db)
     _fill_task_sheet(
         wb["Task"] if "Task" in wb.sheetnames else None,
         excel_rows,
         weight_fractions,
-        ms_by_id,
+        progress_ctx=progress_ctx,
+        cut_off=cut_off,
     )
 
     wb.save(dest)
@@ -526,7 +450,7 @@ def _fill_scurve_sheet(
     po: ProjectPo | None,
     excel_rows: list[tuple[str | None, dict, bool]],
     weight_fractions: list[float],
-    ms_by_id: dict[int, Milestone],
+    progress_ctx: ReportRowProgressContext,
     anchor: date,
     cut_off: date,
     anchors: list[date],
@@ -534,7 +458,6 @@ def _fill_scurve_sheet(
     data_start: int,
 ) -> list[tuple[str, dict, int]]:
     """Returns phase rows as (roman, row_dict, scurve_excel_row)."""
-    task_formulas = _snapshot_task_formulas(ws, _TASK_FORMULA_TEMPLATE_ROW)
     ws.cell(18, _SCURVE_TYPE_COL).value = "Tipe"
 
     ws["A20"].value = None
@@ -552,6 +475,7 @@ def _fill_scurve_sheet(
     ws["C8"] = _as_date(cut_off)
 
     week_cols = min(len(anchors), _SCURVE_LAST_WEEK_COL - _SCURVE_FIRST_WEEK_COL + 1)
+    week_periods: list[tuple[date, date]] = []
     for i in range(week_cols):
         col = _SCURVE_FIRST_WEEK_COL + i
         report_date = anchors[i]
@@ -567,6 +491,7 @@ def _fill_scurve_sheet(
             explicit_first_report_date=project.weekly_report_first_anchor_date,
         )
         row17 = period_end or report_date
+        week_periods.append((row16, row17))
         ws.cell(16, col).value = _as_date(row16)
         ws.cell(17, col).value = _as_date(row17)
         ws.cell(18, col).value = f"Week-{i + 1:02d}"
@@ -597,7 +522,7 @@ def _fill_scurve_sheet(
         ws.cell(cr, _SCURVE_TYPE_COL).value = _scurve_type_label(child)
         it = child.get("item_type") or ""
         if it != TimelineItemType.milestone.value:
-            ws.cell(cr, 11).value = _row_actual_fraction(child, ms_by_id)
+            ws.cell(cr, 11).value = _row_actual_fraction(child, progress_ctx, cut_off)
 
     while idx < len(excel_rows) and r <= max_row:
         roman, row, is_phase = excel_rows[idx]
@@ -609,7 +534,9 @@ def _fill_scurve_sheet(
             child_indices: list[int] = []
             j = idx + 1
             while j < len(excel_rows) and not excel_rows[j][2]:
-                child_indices.append(j)
+                _, child_row, _ = excel_rows[j]
+                if include_in_report_timeline_list(child_row):
+                    child_indices.append(j)
                 j += 1
 
             phase_r = r
@@ -621,13 +548,14 @@ def _fill_scurve_sheet(
             ws.cell(phase_r, 4).value = _as_date(start)
             ws.cell(phase_r, 5).value = _as_date(end)
             ws.cell(phase_r, _SCURVE_TYPE_COL).value = "Phase"
-            _apply_phase_calculation_row(
+            _write_scurve_row_metrics_static(
                 ws,
                 phase_r,
-                task_formulas=task_formulas,
-                template_row=_TASK_FORMULA_TEMPLATE_ROW,
-                week_cols=week_cols,
-                progress_k=_row_actual_fraction(row, ms_by_id),
+                row=row,
+                weight_frac=float(row.get("weight_pct") or 0) / 100.0,
+                cut_off=cut_off,
+                week_periods=week_periods,
+                ctx=progress_ctx,
             )
 
             first_child_r = phase_r + 1
@@ -643,6 +571,10 @@ def _fill_scurve_sheet(
             idx = j
             continue
 
+        if not include_in_report_timeline_list(row):
+            idx += 1
+            continue
+
         ws.cell(r, 2).value = name
         ws.cell(r, 2).font = _TASK_FONT
         ws.cell(r, 3).value = round(weight_frac, 6)
@@ -650,7 +582,7 @@ def _fill_scurve_sheet(
         ws.cell(r, 5).value = _as_date(end)
         ws.cell(r, _SCURVE_TYPE_COL).value = _scurve_type_label(row)
         if (row.get("item_type") or "") != TimelineItemType.milestone.value:
-            ws.cell(r, 11).value = _row_actual_fraction(row, ms_by_id)
+            ws.cell(r, 11).value = _row_actual_fraction(row, progress_ctx, cut_off)
         r += 1
         idx += 1
 
@@ -697,7 +629,9 @@ def _fill_task_sheet(
     ws,
     excel_rows: list[tuple[str | None, dict, bool]],
     weight_fractions: list[float],
-    ms_by_id: dict[int, Milestone],
+    *,
+    progress_ctx: ReportRowProgressContext,
+    cut_off: date,
 ) -> None:
     if ws is None:
         return
@@ -727,22 +661,16 @@ def _fill_task_sheet(
         else:
             task_label = f"{'    ' * max(1, depth)}{name}"
         start, end = _row_dates(row)
-        pct = row.get("clickup_progress_pct")
         ws.cell(r, 1).value = roman
         ws.cell(r, 2).value = task_label
         w_frac = weight_fractions[idx] if idx < len(weight_fractions) else 0.0
-        if is_phase:
-            ws.cell(r, 3).value = round(float(row.get("weight_pct") or 0) / 100.0, 6)
-        else:
-            ws.cell(r, 3).value = round(w_frac, 6)
+        ws.cell(r, 3).value = round(display_row_weight_fraction(row), 6)
         ws.cell(r, 4).value = _as_date(start)
         ws.cell(r, 5).value = _as_date(end)
         ws.cell(r, 6).value = _scurve_type_label(row)
         ws.cell(r, 7).value = row.get("phase_name") or ""
         ws.cell(r, 8).value = row.get("clickup_status") or row.get("status") or ""
-        ws.cell(r, 9).value = (
-            round(float(pct) / 100.0, 4) if pct is not None else _row_actual_fraction(row, ms_by_id)
-        )
+        ws.cell(r, 9).value = round(_row_actual_fraction(row, progress_ctx, cut_off), 4)
         if is_phase:
             ws.cell(r, 2).font = _PHASE_FONT
         else:
@@ -816,6 +744,8 @@ def _fill_milestone_progress_sheet(
     ws,
     *,
     phase_scurve_rows: list[tuple[str, dict, int]],
+    progress_ctx: ReportRowProgressContext,
+    cut_off: date,
 ) -> None:
     if ws is None:
         return
@@ -832,14 +762,18 @@ def _fill_milestone_progress_sheet(
         name_cell = ws.cell(r, 2)
         name_cell.value = name
         name_cell.font = _PHASE_FONT
-        ws.cell(r, 3).value = round(float(row.get("weight_pct") or 0) / 100.0, 6)
+        ws.cell(r, 3).value = round(display_row_weight_fraction(row), 6)
         ws.cell(r, 4).value = _as_date(start)
         ws.cell(r, 5).value = _as_date(end)
-        ws.cell(r, 8).value = f"=NETWORKDAYS(D{r},E{r},Hari_Libur)"
-        ws.cell(r, 9).value = f"=SCurve!I{sc_row}"
-        ws.cell(r, 10).value = f"=SCurve!I{sc_row}"
-        ws.cell(r, 12).value = f"=SCurve!K{sc_row}"
-        ws.cell(r, 13).value = f"=L{r}-J{r}"
+        dur = display_row_duration_days(row, progress_ctx.db)
+        ws.cell(r, 8).value = dur
+        planned_frac = display_row_planned_fraction(row, cut_off, progress_ctx.db)
+        actual_frac = _row_actual_fraction(row, progress_ctx, cut_off)
+        ws.cell(r, 9).value = round(planned_frac, 6)
+        ws.cell(r, 10).value = round(planned_frac, 6)
+        ws.cell(r, 12).value = round(actual_frac, 6)
+        target_w = display_row_weight_fraction(row)
+        ws.cell(r, 13).value = round(target_w * (actual_frac - planned_frac), 6)
 
 
 def export_scurve_from_project(
@@ -852,7 +786,7 @@ def export_scurve_from_project(
     """S-curve export endpoint — same template as weekly report snapshot."""
     last = series[-1] if series else {}
     cut_str = last.get("cut_off")
-    cut_off = date.fromisoformat(cut_str) if cut_str else date.today()
+    cut_off = date.fromisoformat(cut_str) if cut_str else today_jakarta()
     anchor_str = last.get("date")
     anchor = date.fromisoformat(anchor_str) if anchor_str else cut_off
     planned = float(last.get("planned_pct") or 0)

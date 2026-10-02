@@ -23,6 +23,7 @@ from app.services.draft_timeline import (
     save_draft_rows,
 )
 from app.services.timeline_schedule import compute_project_timeline_summary
+from app.core.timezone import now_jakarta
 from app.services.sph import (
     apply_sph_total_from_delivery,
     compute_payment_term_amounts,
@@ -270,7 +271,7 @@ def update_sph(
             project.name = str(sph.sph_name).strip()
         if sph.sph_client is not None and str(sph.sph_client).strip():
             project.client_name = str(sph.sph_client).strip()
-    sph.updated_at = datetime.utcnow()
+    sph.updated_at = now_jakarta()
     log_activity(
         db,
         project_id,
@@ -341,7 +342,7 @@ def update_draft_timeline(
             eff,
         )
         sync_payment_terms_with_draft_timeline(db, sph)
-        sph.updated_at = datetime.utcnow()
+        sph.updated_at = now_jakarta()
         log_activity(
             db,
             project_id,
@@ -386,7 +387,7 @@ def update_payment_terms(
         )
     raw_terms = _resolve_payment_terms(db, project_id, body.payment_terms)
     sph.payment_terms = compute_payment_term_amounts(raw_terms, sph.sph_total_rupiah)
-    sph.updated_at = datetime.utcnow()
+    sph.updated_at = now_jakarta()
     db.commit()
     return _out(sph)
 

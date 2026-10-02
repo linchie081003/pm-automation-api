@@ -13,6 +13,7 @@ from app.services.timeline_schedule import (
     schedule_draft_milestone_rows,
 )
 from app.services.timeline_validation import validate_timeline_items
+from app.core.timezone import today_jakarta
 
 
 def _parse_optional_date(raw) -> date | None:
@@ -228,7 +229,7 @@ def save_draft_rows(
         if row_key:
             id_map[row_key] = r.id
         id_map[str(r.id)] = r.id
-    eff = start or draft.effective_from or date.today()
+    eff = start or draft.effective_from or today_jakarta()
     recalc_draft_dates(db, project.id, eff, milestone_manual, inputs_by_id)
     return list_draft_rows(db, project.id)
 
