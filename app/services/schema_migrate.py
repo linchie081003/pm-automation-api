@@ -170,7 +170,7 @@ def ensure_phase_af_columns(engine: Engine) -> None:
             text(
                 """
                 UPDATE milestones SET item_type = 'phase'
-                WHERE parent_id IS NULL AND item_type IN ('milestone', 'MILESTONE')
+                WHERE parent_id IS NULL AND item_type IN ('milestone')
                 """
             )
         )
@@ -178,7 +178,7 @@ def ensure_phase_af_columns(engine: Engine) -> None:
             text(
                 """
                 UPDATE schedule_baseline_milestones SET item_type = 'phase'
-                WHERE parent_id IS NULL AND item_type IN ('milestone', 'MILESTONE')
+                WHERE parent_id IS NULL AND item_type IN ('milestone')
                 """
             )
         )
