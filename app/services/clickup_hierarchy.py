@@ -1,8 +1,6 @@
 """ClickUp: Folder (project) → List (phase) → Task → Subtask."""
 from __future__ import annotations
 
-from datetime import datetime
-
 import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -17,7 +15,7 @@ from app.services.clickup import (
     is_configured,
 )
 from app.services.schedule_window import kickoff_milestones
-from app.core.timezone import now_jakarta
+from app.core.timezone import jakarta_date_to_timestamp_ms, now_jakarta
 
 
 def _folder_name(project: Project) -> str:
@@ -54,12 +52,6 @@ def ensure_project_clickup_folder(db: Session, project: Project) -> str:
     project.clickup_list_name = None
     db.flush()
     return folder_id
-
-
-def _ms_timestamp(d) -> int | None:
-    if not d:
-        return None
-    return int(datetime.combine(d, datetime.min.time()).timestamp() * 1000)
 
 
 def _top_level_phases(all_rows: list[Milestone]) -> list[Milestone]:
@@ -191,8 +183,12 @@ def _create_task_in_list(
         "description": f"PDC {item_kind} · bobot {row.weight_pct}%",
         "tags": [item_kind],
     }
-    due = _ms_timestamp(row.target_date)
-    start = _ms_timestamp(row.start_date)
+    due = (
+        jakarta_date_to_timestamp_ms(row.target_date) if row.target_date else None
+    )
+    start = (
+        jakarta_date_to_timestamp_ms(row.start_date) if row.start_date else None
+    )
     if due:
         payload["due_date"] = due
     if start:
@@ -210,8 +206,12 @@ def _create_subtask(
     client: httpx.Client, headers: dict, parent_task_id: str, row: Milestone
 ) -> str:
     payload: dict = {"name": row.name[:255]}
-    due = _ms_timestamp(row.target_date)
-    start = _ms_timestamp(row.start_date)
+    due = (
+        jakarta_date_to_timestamp_ms(row.target_date) if row.target_date else None
+    )
+    start = (
+        jakarta_date_to_timestamp_ms(row.start_date) if row.start_date else None
+    )
     if due:
         payload["due_date"] = due
     if start:

@@ -28,7 +28,12 @@ from app.models import (
 from app.services.report_calendar import resolve_report_period
 from app.services.schedule import scurve_points
 from app.services.progress import build_clickup_lookups, clickup_status_mapping_context
-from app.services.schedule_window import kickoff_milestones, project_report_start_date, schedule_bounds
+from app.services.business_calendar import count_business_days_inclusive
+from app.services.schedule_window import (
+    kickoff_milestones,
+    project_report_start_date,
+    timeline_report_bounds,
+)
 from app.services.timeline_display import timeline_display_rows_for_project
 from app.services.timeline_report_metrics import ReportRowProgressContext, display_row_actual_pct
 from app.core.timezone import today_jakarta
@@ -153,22 +158,15 @@ def _resolve_po_due(project: Project, po: ProjectPo | None) -> date | None:
 
 
 def _project_duration_label(db: Session, project_id: int, sph: ProjectSph | None) -> str:
-    rows = timeline_display_rows_for_project(db, project_id, include_subtasks=True)
-    total = 0
-    for r in rows:
-        dur = r.get("display_duration_days") or r.get("duration_days")
-        if dur and int(dur) > 0:
-            total += int(dur)
-    if total > 0:
-        label = f"{total} hari kerja (total timeline)"
+    start, end, _source = timeline_report_bounds(db, project_id)
+    if start and end:
+        hari_kerja = count_business_days_inclusive(start, end, db)
+        label = f"{hari_kerja} hari kerja ({start.isoformat()} s.d. {end.isoformat()})"
         if sph and sph.planned_md:
             label += f" · {sph.planned_md:g} MD (rencana SPH)"
         return label
     if sph and sph.planned_md:
         return f"{sph.planned_md:g} mandays (rencana SPH)"
-    start, end = schedule_bounds(db, project_id)
-    if start and end:
-        return f"{start.isoformat()} s.d. {end.isoformat()}"
     return "—"
 
 
