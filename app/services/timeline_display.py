@@ -429,8 +429,32 @@ def _milestone_pdc_row_dict(m: Milestone) -> dict:
     }
 
 
-def timeline_display_rows_for_project(db: Session, project_id: int) -> list[dict]:
-    """Same ordered rows as GET /milestones (timeline + ClickUp merge)."""
+def filter_timeline_display_rows(
+    rows: list[dict],
+    *,
+    include_subtasks: bool = False,
+) -> list[dict]:
+    """Optional row-level filter for report/API consumers."""
+    if include_subtasks:
+        return rows
+    return [
+        r
+        for r in rows
+        if (r.get("item_type") or "") != TimelineItemType.subtask.value
+    ]
+
+
+def timeline_display_rows_for_project(
+    db: Session,
+    project_id: int,
+    *,
+    include_subtasks: bool = False,
+) -> list[dict]:
+    """Timeline + ClickUp merge (same order as GET /milestones when unfiltered).
+
+    Default ``include_subtasks=False`` drops subtask rows for report slides/sheets.
+    Pass ``include_subtasks=True`` for full WBS (e.g. Excel weight rows, UI parity).
+    """
     from sqlalchemy import select
 
     from app.models import ClickUpTaskCache, Project
@@ -469,6 +493,7 @@ def timeline_display_rows_for_project(db: Session, project_id: int) -> list[dict
                 )
             )
             pdc_rows.append(base)
-        return merge_timeline_with_clickup(
+        merged = merge_timeline_with_clickup(
             pdc_rows, ms_list, caches, db=db, project=project
         )
+        return filter_timeline_display_rows(merged, include_subtasks=include_subtasks)

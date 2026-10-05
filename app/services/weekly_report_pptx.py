@@ -16,17 +16,21 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import ClickUpTaskCache, Milestone, Project, ProjectPo, ProjectSph, WeeklyReport
+from app.models import (
+    ClickUpTaskCache,
+    Milestone,
+    Project,
+    ProjectPo,
+    ProjectSph,
+    TimelineItemType,
+    WeeklyReport,
+)
 from app.services.report_calendar import resolve_report_period
 from app.services.schedule import scurve_points
 from app.services.progress import build_clickup_lookups, clickup_status_mapping_context
 from app.services.schedule_window import kickoff_milestones, project_report_start_date, schedule_bounds
 from app.services.timeline_display import timeline_display_rows_for_project
-from app.services.timeline_report_metrics import (
-    ReportRowProgressContext,
-    display_row_actual_pct,
-    include_in_report_timeline_list,
-)
+from app.services.timeline_report_metrics import ReportRowProgressContext, display_row_actual_pct
 from app.core.timezone import today_jakarta
 
 COLOR_ORANGE = RGBColor(0xF5, 0x82, 0x20)
@@ -149,7 +153,7 @@ def _resolve_po_due(project: Project, po: ProjectPo | None) -> date | None:
 
 
 def _project_duration_label(db: Session, project_id: int, sph: ProjectSph | None) -> str:
-    rows = timeline_display_rows_for_project(db, project_id)
+    rows = timeline_display_rows_for_project(db, project_id, include_subtasks=True)
     total = 0
     for r in rows:
         dur = r.get("display_duration_days") or r.get("duration_days")
@@ -955,8 +959,13 @@ def _build_slide_timeline(
     _slide_body_backdrop(slide)
     _slide_footer(slide, 4)
 
-    rows = timeline_display_rows_for_project(db, project.id)
-    display_rows = [r for r in rows if include_in_report_timeline_list(r)]
+    _TIMELINE_SLIDE_EXCLUDE_ITEM_TYPES = frozenset({TimelineItemType.subtask.value})
+    rows = timeline_display_rows_for_project(db, project.id, include_subtasks=False)
+    display_rows = [
+        r
+        for r in rows
+        if (r.get("item_type") or "") not in _TIMELINE_SLIDE_EXCLUDE_ITEM_TYPES
+    ]
     max_timeline_rows = 20
     display_rows = display_rows[:max_timeline_rows]
 

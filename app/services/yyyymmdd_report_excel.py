@@ -31,7 +31,6 @@ from app.services.timeline_report_metrics import (
     display_row_planned_fraction,
     display_row_planned_week_fraction,
     display_row_weight_fraction,
-    include_in_report_timeline_list,
 )
 from app.services.report_calendar import (
     extend_anchors_for_project_end,
@@ -352,7 +351,7 @@ def export_yyyymmdd_workbook(
     wb = load_workbook(dest)
     _trim_workbook_sheets(wb)
 
-    display = timeline_display_rows_for_project(db, project.id)
+    display = timeline_display_rows_for_project(db, project.id, include_subtasks=True)
     ms_list = kickoff_milestones(db, project.id) or milestones
     ms_by_id = {m.id: m for m in ms_list}
     caches = list(
@@ -507,8 +506,10 @@ def _fill_scurve_sheet(
     idx = 0
 
     def _write_detail_row(cr: int, child_idx: int) -> None:
-        """Task / subtask / milestone — tampil saja, tanpa formula mingguan."""
+        """Task / milestone — tampil saja, tanpa formula mingguan (subtask di-skip)."""
         _, child, _ = excel_rows[child_idx]
+        if (child.get("item_type") or "") == TimelineItemType.subtask.value:
+            return
         w_child = weight_fractions[child_idx] if child_idx < len(weight_fractions) else 0.0
         cname = _row_display_name(child)
         cstart, cend = _row_dates(child)
@@ -534,9 +535,7 @@ def _fill_scurve_sheet(
             child_indices: list[int] = []
             j = idx + 1
             while j < len(excel_rows) and not excel_rows[j][2]:
-                _, child_row, _ = excel_rows[j]
-                if include_in_report_timeline_list(child_row):
-                    child_indices.append(j)
+                child_indices.append(j)
                 j += 1
 
             phase_r = r
@@ -559,19 +558,24 @@ def _fill_scurve_sheet(
             )
 
             first_child_r = phase_r + 1
-            for k, child_idx in enumerate(child_indices):
-                cr = first_child_r + k
+            detail_written = 0
+            for child_idx in child_indices:
+                _, child_row, _ = excel_rows[child_idx]
+                if (child_row.get("item_type") or "") == TimelineItemType.subtask.value:
+                    continue
+                cr = first_child_r + detail_written
                 if cr > max_row:
                     break
                 _write_detail_row(cr, child_idx)
+                detail_written += 1
 
             phase_row_nums.append(phase_r)
             phase_meta.append((roman or "", row, phase_r))
-            r = first_child_r + len(child_indices)
+            r = first_child_r + detail_written
             idx = j
             continue
 
-        if not include_in_report_timeline_list(row):
+        if (row.get("item_type") or "") == TimelineItemType.subtask.value:
             idx += 1
             continue
 

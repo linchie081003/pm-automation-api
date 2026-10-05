@@ -21,6 +21,13 @@ def _row(rid, pid, start, end, it=TimelineItemType.task):
     )
 
 
+def test_rollup_span_from_children_includes_milestone_gates():
+    gate = _row(10, 1, date(2026, 11, 25), date(2026, 11, 25), TimelineItemType.milestone)
+    start, end = rollup_span_from_children([gate])
+    assert start == date(2026, 11, 25)
+    assert end == date(2026, 11, 25)
+
+
 def test_rollup_span_from_children_min_max():
     phase = _row(1, None, date(2026, 1, 1), date(2026, 12, 31), TimelineItemType.phase)
     t1 = _row(2, 1, date(2026, 3, 1), date(2026, 3, 10))

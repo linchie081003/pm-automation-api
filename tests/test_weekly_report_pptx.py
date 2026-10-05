@@ -49,7 +49,11 @@ def test_build_weekly_report_pptx_smoke(tmp_path, monkeypatch):
     )
     db = MagicMock()
     db.get.return_value = None
-    monkeypatch.setattr(mod, "timeline_display_rows_for_project", lambda _db, _pid: [])
+    monkeypatch.setattr(
+        mod,
+        "timeline_display_rows_for_project",
+        lambda _db, _pid, **_: [],
+    )
     monkeypatch.setattr(mod, "scurve_points", lambda _db, _pid, **kw: [])
     monkeypatch.setattr(
         mod,

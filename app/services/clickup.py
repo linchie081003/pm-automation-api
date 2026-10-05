@@ -730,6 +730,10 @@ def apply_clickup_dates_to_timeline(db: Session, project_id: int) -> int:
                     start, end = parent_m.start_date, parent_m.target_date
         elif has_children:
             start, end = rollup_span_from_children(kids)
+            if not start and not end and cache and not is_subtask_row:
+                start = _cache_start_date(cache)
+                end = cache.due_date
+                from_clickup_raw = bool(start or end)
         elif cache and not is_subtask_row:
             start = _cache_start_date(cache)
             end = cache.due_date
@@ -755,6 +759,28 @@ def apply_clickup_dates_to_timeline(db: Session, project_id: int) -> int:
     return updated
 
 
+def _find_clickup_task_cache(
+    db: Session, project_id: int, clickup_task_id: str
+) -> ClickUpTaskCache | None:
+    """DB row + pending ``session.new`` (same transaction upserts must not double-insert)."""
+    existing = db.scalar(
+        select(ClickUpTaskCache).where(
+            ClickUpTaskCache.project_id == project_id,
+            ClickUpTaskCache.clickup_task_id == clickup_task_id,
+        )
+    )
+    if existing is not None:
+        return existing
+    for obj in db.new:
+        if (
+            isinstance(obj, ClickUpTaskCache)
+            and obj.project_id == project_id
+            and obj.clickup_task_id == clickup_task_id
+        ):
+            return obj
+    return None
+
+
 def _upsert_task_cache(
     db: Session,
     project: Project,
@@ -762,18 +788,14 @@ def _upsert_task_cache(
     *,
     list_id: str | None = None,
     milestone_id: int | None = None,
+    milestone_id_authoritative: bool = False,
 ) -> None:
     tid = str(t.get("id", ""))
     if not tid:
         return
     status_obj = t.get("status") or {}
     status = status_obj.get("status", "")
-    existing = db.scalar(
-        select(ClickUpTaskCache).where(
-            ClickUpTaskCache.project_id == project.id,
-            ClickUpTaskCache.clickup_task_id == tid,
-        )
-    )
+    existing = _find_clickup_task_cache(db, project.id, tid)
     pct = resolve_task_percent_complete(t)
     row_data = {
         "name": t.get("name", ""),
@@ -794,6 +816,17 @@ def _upsert_task_cache(
     }
     if existing:
         for k, v in row_data.items():
+            if k == "milestone_id":
+                if v is None:
+                    continue
+                if (
+                    existing.milestone_id is not None
+                    and existing.milestone_id != v
+                    and not milestone_id_authoritative
+                ):
+                    continue
+            if k == "clickup_list_id" and v is None and existing.clickup_list_id:
+                continue
             setattr(existing, k, v)
     else:
         db.add(ClickUpTaskCache(project_id=project.id, clickup_task_id=tid, **row_data))
@@ -915,6 +948,7 @@ def sync_project_tasks(db: Session, project: Project) -> dict:
                             t,
                             list_id=owner.clickup_list_id if owner else None,
                             milestone_id=owner.id if owner else None,
+                            milestone_id_authoritative=True,
                         )
 
                 caches = list(

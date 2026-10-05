@@ -13,6 +13,7 @@ from app.services.business_calendar import count_business_days_inclusive
 ROLLUP_CHILD_TYPES = frozenset(
     {
         TimelineItemType.phase,
+        TimelineItemType.milestone,
         TimelineItemType.task,
         TimelineItemType.subtask,
     }
@@ -36,7 +37,7 @@ def _rollup_children(rows: list[_SchedRow]) -> list[_SchedRow]:
 def rollup_span_from_children(
     children: list[_SchedRow],
 ) -> tuple[Any | None, Any | None]:
-    """min(start) / max(target) dari anak phase/task/subtask."""
+    """min(start) / max(target) dari anak phase/milestone/task/subtask."""
     weighted = _rollup_children(children)
     starts = [c.start_date for c in weighted if c.start_date]
     ends = [c.target_date for c in weighted if c.target_date]

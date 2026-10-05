@@ -8,21 +8,7 @@ from types import SimpleNamespace
 
 from sqlalchemy.orm import Session
 
-from app.models import ClickUpTaskCache, Milestone, MilestoneStatus, Project, TimelineItemType
-
-# Daftar timeline di laporan mingguan (PPTX slide 4, Excel sheet SCurve) — tanpa subtask.
-REPORT_TIMELINE_ITEM_TYPES = frozenset(
-    {
-        TimelineItemType.phase.value,
-        TimelineItemType.milestone.value,
-        TimelineItemType.task.value,
-    }
-)
-
-
-def include_in_report_timeline_list(row: dict) -> bool:
-    """Phase, milestone, dan task saja; subtask diabaikan."""
-    return (row.get("item_type") or "") in REPORT_TIMELINE_ITEM_TYPES
+from app.models import ClickUpTaskCache, Milestone, MilestoneStatus, Project
 from app.services.business_calendar import count_business_days_inclusive
 from app.services.schedule import phase_planned_progress_pct
 
