@@ -1,0 +1,41 @@
+-- =============================================================================
+-- PDC: migrasi DATA local → production (PostgreSQL)
+-- =============================================================================
+-- Skema production harus sudah ada (deploy API sekali → create_all + schema_migrate).
+-- File ini hanya petunjuk; tidak perlu dijalankan di psql.
+--
+-- LANGKAH 1 — Export data dari LOCAL (PowerShell, dari mesin yang punya DB local)
+--
+--   Ganti connection string sesuai .env local (5432 native atau 5433 Docker):
+--
+--   $local = "postgresql://pdc:pdc@127.0.0.1:5432/pdc"
+--   pg_dump $local `
+--     --data-only `
+--     --no-owner `
+--     --no-privileges `
+--     --disable-triggers `
+--     -f pdc_local_data.sql
+--
+--   Hasil: pdc_local_data.sql (INSERT/COPY data semua tabel public).
+--
+-- LANGKAH 2 — Backup production dulu (wajib)
+--
+--   $prod = "postgresql://USER:PASS@HOST:5432/pdc"
+--   pg_dump $prod -Fc -f pdc_production_backup_YYYYMMDD.dump
+--
+-- LANGKAH 3 — Di PRODUCTION (psql), urutan file:
+--
+--   \i 01_production_truncate.sql
+--   \i pdc_local_data.sql          -- file hasil pg_dump langkah 1
+--   \i 03_production_reset_sequences.sql
+--   \i 04_production_verify.sql
+--
+-- Atau satu baris:
+--   psql "$prod" -f 01_production_truncate.sql -f pdc_local_data.sql -f 03_production_reset_sequences.sql -f 04_production_verify.sql
+--
+-- CATATAN PENTING
+--   • File upload (backend/uploads) dan path di kolom documents/weekly_reports TIDAK ikut SQL.
+--   • integration_settings (token ClickUp / Google) mungkin perlu diset ulang di prod.
+--   • JWT_SECRET production tetap pakai secret prod — user & password hash tetap valid setelah import.
+--   • Setelah import, restart API production dan smoke-test login + 1 proyek.
+-- =============================================================================

@@ -1,0 +1,25 @@
+-- =============================================================================
+-- Bukan SQL yang di-execute di psql — referensi perintah export data LOCAL.
+-- Hasilnya satu file: pdc_local_data.sql
+-- =============================================================================
+--
+-- Windows PowerShell (pg_dump dari PostgreSQL / Docker):
+--
+--   cd backend\scripts\migrate_local_to_production
+--
+--   # DB native port 5432
+--   pg_dump "postgresql://pdc:pdc@127.0.0.1:5432/pdc" `
+--     --data-only --no-owner --no-privileges --disable-triggers `
+--     -f pdc_local_data.sql
+--
+--   # Docker Compose (host port 5433)
+--   pg_dump "postgresql://pdc:pdc@127.0.0.1:5433/pdc" `
+--     --data-only --no-owner --no-privileges --disable-triggers `
+--     -f pdc_local_data.sql
+--
+-- Opsi tambahan jika hanya sebagian proyek (contoh project_id = 22):
+--   pg_dump ... --data-only --disable-triggers `
+--     --table=projects --table=milestones --table=project_sph ...
+--
+-- Restore ke production: lihat 00_petunjuk.sql
+-- =============================================================================
