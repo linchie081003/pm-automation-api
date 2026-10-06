@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -8,11 +6,12 @@ from app.config import settings
 from app.core.auth_cookies import REFRESH_COOKIE, clear_auth_cookies, set_auth_cookies
 from app.core.deps import get_current_user
 from app.core.rate_limit import check_rate_limit
-from app.core.security import (
-    create_access_token,
-    create_refresh_token,
-    decode_token,
-    verify_password,
+from app.core.security import create_access_token, verify_password
+from app.services.refresh_tokens import (
+    consume_refresh_token,
+    issue_refresh_token,
+    purge_expired_refresh_sessions,
+    revoke_refresh_token_raw,
 )
 from app.database import get_db
 from app.models import User
@@ -45,9 +44,10 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account inactive")
     user.last_login = now_jakarta()
-    db.commit()
     access = create_access_token(user.id)
-    refresh = create_refresh_token(user.id)
+    refresh = issue_refresh_token(db, user.id)
+    purge_expired_refresh_sessions(db)
+    db.commit()
     set_auth_cookies(response, access, refresh)
     return LoginResponse(ok=True)
 
@@ -68,23 +68,27 @@ def refresh(
         window_seconds=settings.login_rate_limit_window_seconds,
     )
     try:
-        payload = decode_token(raw)
-        if payload.get("type") != "refresh":
-            raise HTTPException(status_code=401, detail="Invalid refresh token")
-        user_id = int(payload["sub"])
-    except Exception as exc:
+        user_id = consume_refresh_token(db, raw)
+    except ValueError as exc:
         raise HTTPException(status_code=401, detail="Invalid refresh token") from exc
     user = db.get(User, user_id)
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found")
     access = create_access_token(user.id)
-    refresh = create_refresh_token(user.id)
+    refresh = issue_refresh_token(db, user.id)
+    db.commit()
     set_auth_cookies(response, access, refresh)
     return LoginResponse(ok=True)
 
 
 @router.post("/logout", response_model=LoginResponse)
-def logout(response: Response):
+def logout(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    revoke_refresh_token_raw(db, request.cookies.get(REFRESH_COOKIE))
+    db.commit()
     clear_auth_cookies(response)
     return LoginResponse(ok=True)
 

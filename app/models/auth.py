@@ -64,6 +64,26 @@ class User(Base):
         back_populates="user",
         foreign_keys="ProjectMember.user_id",
     )
+    refresh_sessions: Mapped[list["RefreshTokenSession"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+
+class RefreshTokenSession(Base):
+    """Server-side refresh token session (jti) for revocation and rotation."""
+
+    __tablename__ = "refresh_token_sessions"
+
+    jti: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_jakarta)
+
+    user: Mapped[User] = relationship(back_populates="refresh_sessions")
 
 
 class Role(Base):

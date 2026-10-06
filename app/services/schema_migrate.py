@@ -48,6 +48,16 @@ def _document_type_enum_names(conn: Connection) -> list[str]:
 
 def ensure_phase_af_columns(engine: Engine) -> None:
     statements = [
+        """
+        CREATE TABLE IF NOT EXISTS refresh_token_sessions (
+            jti VARCHAR(36) PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            expires_at TIMESTAMP NOT NULL,
+            revoked_at TIMESTAMP NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_refresh_token_sessions_user_id ON refresh_token_sessions (user_id)",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS po_due_date DATE",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS planned_start_date DATE",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS document_repo_url VARCHAR(1024)",

@@ -8,6 +8,7 @@ from app.database import get_db
 from app.models import Role, User
 from app.models.auth import user_roles
 from app.schemas.auth import RoleBrief, UserCreate, UserOut, UserUpdate
+from app.services.refresh_tokens import revoke_all_user_refresh_sessions
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -18,6 +19,7 @@ def _user_out(user: User) -> UserOut:
         email=user.email,
         name=user.name,
         is_active=user.is_active,
+        last_login=user.last_login,
         roles=[RoleBrief.model_validate(r) for r in user.roles],
     )
 
@@ -91,8 +93,11 @@ def update_user(
         user.name = body.name
     if body.is_active is not None:
         user.is_active = body.is_active
+        if body.is_active is False:
+            revoke_all_user_refresh_sessions(db, user.id)
     if body.password:
         user.hashed_password = hash_password(body.password)
+        revoke_all_user_refresh_sessions(db, user.id)
 
     db.commit()
     db.refresh(user)

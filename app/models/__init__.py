@@ -2,6 +2,7 @@ from app.models.auth import (
     Permission,
     ProjectMember,
     ProjectMemberRole,
+    RefreshTokenSession,
     Role,
     User,
 )
@@ -43,6 +44,7 @@ from app.models.domain import (
 
 __all__ = [
     "User",
+    "RefreshTokenSession",
     "Role",
     "Permission",
     "ProjectMember",

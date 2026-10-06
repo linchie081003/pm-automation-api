@@ -23,8 +23,6 @@ def load_user_permissions(db: Session, user: User) -> set[str]:
         return set()
     codes: set[str] = set()
     for role in user.roles:
-        if role.code == "admin":
-            return {"*"}
         for perm in role.permissions:
             codes.add(perm.code)
     return codes

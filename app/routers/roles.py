@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.deps import PermissionChecker
 from app.database import get_db
 from app.models import Permission, Role
+from app.models.auth import user_roles
 from app.schemas.auth import (
     PermissionOut,
     RoleCreate,
@@ -124,6 +125,16 @@ def delete_role(
         raise HTTPException(status_code=404, detail="Role not found")
     if role.is_system:
         raise HTTPException(status_code=400, detail="Cannot delete system role")
+    user_count = db.scalar(
+        select(func.count())
+        .select_from(user_roles)
+        .where(user_roles.c.role_id == role_id)
+    )
+    if user_count:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Role masih dipakai {user_count} user. Pindahkan atau hapus assignment dulu.",
+        )
     db.delete(role)
     db.commit()
     return {"deleted": True}
