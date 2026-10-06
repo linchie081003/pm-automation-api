@@ -710,13 +710,10 @@ def scurve_points(
             spi = snap.spi_at_week
             baseline_version = snap.baseline_version
             frozen = True
-        elif cut_off <= today:
+        else:
             metrics_as_of = min(today, cut_off)
             actual = resolve_actual_progress(db, project, metrics_as_of)
             spi = compute_spi(actual, planned) or 0.0
-        else:
-            actual = None
-            spi = None
 
         points.append(
             {

@@ -103,7 +103,7 @@ def compute_health(db: Session, project_id: int, as_of: date | None = None) -> d
     out = {
         "project_id": project_id,
         "as_of": as_of.isoformat(),
-        "status_date": status_cutoff.isoformat(),
+        "status_date": as_of.isoformat(),
         "planned_progress_pct": planned,
         "actual_progress_pct": actual,
         "progress_deviation_pct": deviation,
