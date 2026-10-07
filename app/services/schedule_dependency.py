@@ -31,6 +31,8 @@ def resolve_successor_span(
     pred_end: date | None,
     duration_days: int,
     db: Session | None,
+    *,
+    lag_days: int = 0,
 ) -> tuple[date | None, date | None]:
     """
     Return (start, target) for successor given predecessor dates and inclusive durasi.
@@ -42,32 +44,39 @@ def resolve_successor_span(
     )
 
     dur = max(int(duration_days or 1), 1)
+    lag = max(int(lag_days or 0), 0)
+
+    def _with_lag(start: date, end: date) -> tuple[date, date]:
+        if lag <= 0:
+            return start, end
+        start = add_business_days(start, lag, db)
+        return start, add_business_days(start, dur, db)
 
     if link == PredecessorLinkType.FS:
         if not pred_end:
             return None, None
         start = business_day_after(pred_end, db)
-        return start, add_business_days(start, dur, db)
+        return _with_lag(start, add_business_days(start, dur, db))
 
     if link == PredecessorLinkType.SS:
         if not pred_start:
             return None, None
         start = add_business_days(pred_start, 1, db)
-        return start, add_business_days(start, dur, db)
+        return _with_lag(start, add_business_days(start, dur, db))
 
     if link == PredecessorLinkType.FF:
         if not pred_end:
             return None, None
         target = add_business_days(pred_end, 1, db)
         start = subtract_business_days(target, dur, db)
-        return start, target
+        return _with_lag(start, target)
 
     if link == PredecessorLinkType.SF:
         if not pred_start:
             return None, None
         target = add_business_days(pred_start, 1, db)
         start = subtract_business_days(target, dur, db)
-        return start, target
+        return _with_lag(start, target)
 
     return None, None
 

@@ -204,6 +204,31 @@ class ScheduleBaselineMilestone(Base):
     predecessor_link_type: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
 
     baseline: Mapped["ScheduleBaseline"] = relationship(back_populates="milestone_rows")
+    editor_predecessors: Mapped[list["MilestonePredecessor"]] = relationship(
+        back_populates="milestone_row",
+        cascade="all, delete-orphan",
+        order_by="MilestonePredecessor.sort_order",
+    )
+
+
+class MilestonePredecessor(Base):
+    """Beta Timeline Editor: multi-predecessor links on draft baseline rows (fan-in)."""
+
+    __tablename__ = "milestone_predecessors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    milestone_row_id: Mapped[int] = mapped_column(
+        ForeignKey("schedule_baseline_milestones.id", ondelete="CASCADE"),
+        index=True,
+    )
+    predecessor_ref: Mapped[str] = mapped_column(String(64))
+    link_type: Mapped[str] = mapped_column(String(8), default="FS")
+    lag_days: Mapped[int] = mapped_column(Integer, default=0)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    milestone_row: Mapped["ScheduleBaselineMilestone"] = relationship(
+        back_populates="editor_predecessors"
+    )
 
 
 class ProgressSnapshot(Base):

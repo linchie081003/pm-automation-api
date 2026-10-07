@@ -29,6 +29,7 @@ from app.routers import (
     roles,
     schedule,
     sph,
+    timeline_editor,
     timeline_templates,
     project_roster,
     project_po,
@@ -80,6 +81,7 @@ app.include_router(milestones.router, prefix="/api")
 app.include_router(clickup.router, prefix="/api")
 app.include_router(google_drive_integration.router, prefix="/api")
 app.include_router(sph.router, prefix="/api")
+app.include_router(timeline_editor.router, prefix="/api")
 app.include_router(timeline_templates.router, prefix="/api")
 app.include_router(project_roster.router, prefix="/api")
 app.include_router(project_po.router, prefix="/api")

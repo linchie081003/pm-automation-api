@@ -159,6 +159,17 @@ def ensure_phase_af_columns(engine: Engine) -> None:
         """,
         "ALTER TABLE projects ALTER COLUMN weekly_report_cutoff_offset_days SET DEFAULT 6",
         "UPDATE projects SET weekly_report_cutoff_offset_days = 6 WHERE weekly_report_cutoff_offset_days = 0",
+        """
+        CREATE TABLE IF NOT EXISTS milestone_predecessors (
+            id SERIAL PRIMARY KEY,
+            milestone_row_id INTEGER NOT NULL REFERENCES schedule_baseline_milestones(id) ON DELETE CASCADE,
+            predecessor_ref VARCHAR(64) NOT NULL,
+            link_type VARCHAR(8) NOT NULL DEFAULT 'FS',
+            lag_days INTEGER NOT NULL DEFAULT 0,
+            sort_order INTEGER NOT NULL DEFAULT 0
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_milestone_predecessors_row ON milestone_predecessors (milestone_row_id)",
     ]
     enum_values = ["phase", "subtask"]
     doc_type_values = [
