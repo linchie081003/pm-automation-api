@@ -20,6 +20,7 @@ from app.services.timeline_editor_store import (
     list_editor_rows,
     save_editor_rows,
     seed_rows_from_draft,
+    workspace_updated_at_iso,
 )
 
 
@@ -70,6 +71,7 @@ def timeline_editor_snapshot(db: Session, project_id: int) -> dict:
         "storage_source": storage_source,
         "read_only_source": storage_source,
         "sph_draft_writable": draft_timeline_editable(project, sph=sph),
+        "workspace_updated_at": workspace_updated_at_iso(db, project_id),
         "note": note,
     }
 
@@ -79,6 +81,8 @@ def timeline_editor_save(
     project_id: int,
     rows: list[dict],
     start_date: date | None,
+    *,
+    expected_workspace_updated_at=None,
 ) -> dict:
     project = db.get(Project, project_id)
     if not project:
@@ -92,7 +96,13 @@ def timeline_editor_save(
     for i, raw in enumerate(recalced):
         raw["sort_order"] = i
 
-    save_editor_rows(db, project, recalced, eff)
+    save_editor_rows(
+        db,
+        project,
+        recalced,
+        eff,
+        expected_workspace_updated_at=expected_workspace_updated_at,
+    )
     snap = timeline_editor_snapshot(db, project_id)
     snap["project_timeline"] = compute_project_timeline_summary(db, snap["rows"], eff)
     return snap

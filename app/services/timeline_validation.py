@@ -26,6 +26,13 @@ def _norm_type(raw: str) -> TimelineItemType:
         return TimelineItemType.phase
 
 
+def _row_label(row: TimelineItemRow, key: str) -> str:
+    name = (row.name or "").strip()
+    if name:
+        return f"«{name}»"
+    return f"baris {key}"
+
+
 def _is_weighted_type(t: TimelineItemType) -> bool:
     return t in (
         TimelineItemType.phase,
@@ -101,15 +108,20 @@ def validate_timeline_items(items: list[dict]) -> None:
         elif _norm_type(parent.item_type) == TimelineItemType.phase:
             if t not in (TimelineItemType.task, TimelineItemType.milestone):
                 raise ValueError(
-                    f"Anak phase «{parent.name}» hanya task atau milestone gate (baris {key})."
+                    f"Di bawah phase «{parent.name}», {_row_label(row, key)} bertipe "
+                    f"{t.value} — hanya task atau milestone gate yang diperbolehkan. "
+                    f"Ubah kolom Tipe di Timeline Editor atau sesuaikan parent."
                 )
         elif _norm_type(parent.item_type) == TimelineItemType.task:
             if t != TimelineItemType.subtask:
                 raise ValueError(
-                    f"Anak task «{parent.name}» hanya subtask (baris {key})."
+                    f"Di bawah task «{parent.name}», {_row_label(row, key)} bertipe "
+                    f"{t.value} — hanya subtask yang diperbolehkan."
                 )
         else:
-            raise ValueError(f"Tipe parent tidak valid untuk baris {key}.")
+            raise ValueError(
+                f"Tipe parent tidak valid untuk {_row_label(row, key)} (parent «{parent.name}»)."
+            )
 
         if t == TimelineItemType.milestone:
             if abs(row.weight_pct) > WEIGHT_TOLERANCE:

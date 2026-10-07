@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -17,7 +17,7 @@ from app.models import (
     TimelineItemType,
 )
 from app.services.draft_timeline import list_draft_rows
-from app.services.timeline_editor_engine import normalize_predecessors
+from app.services.timeline_editor_engine import normalize_predecessors, validate_timeline_predecessors
 from app.services.timeline_item_type import parse_timeline_item_type
 from app.services.timeline_validation import validate_timeline_items
 
@@ -173,15 +173,80 @@ def assert_editor_save_allowed(project: Project) -> None:
         raise ValueError("Proyek sudah closed — workspace Timeline Editor tidak bisa disimpan.")
 
 
+class EditorWorkspaceConflictError(ValueError):
+    """Optimistic lock: workspace changed on server since client loaded snapshot."""
+
+
+def _parse_workspace_version(raw: datetime | str | None) -> datetime | None:
+    if raw is None:
+        return None
+    if isinstance(raw, datetime):
+        return raw
+    s = str(raw).strip()
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        raise ValueError("workspace_updated_at tidak valid (harus ISO datetime).") from None
+
+
+def assert_workspace_version(
+    db: Session,
+    project_id: int,
+    expected_updated_at: datetime | str | None,
+) -> None:
+    """Reject save if server workspace version differs (multi-tab / multi-user)."""
+    expected = _parse_workspace_version(expected_updated_at)
+    has_rows = editor_has_rows(db, project_id)
+    st = db.get(TimelineEditorState, project_id)
+    server_at = st.updated_at if st else None
+
+    if has_rows:
+        if expected is None:
+            raise EditorWorkspaceConflictError(
+                "Workspace editor sudah berisi data di server — muat ulang halaman "
+                "sebelum menyimpan (menghindari menimpa perubahan orang lain)."
+            )
+        if server_at is None:
+            raise EditorWorkspaceConflictError(
+                "Versi workspace tidak tersedia di server — muat ulang lalu simpan lagi."
+            )
+        if server_at.replace(tzinfo=None) != expected.replace(tzinfo=None):
+            raise EditorWorkspaceConflictError(
+                "Konflik simpan: workspace editor sudah diubah (tab lain atau PM lain). "
+                f"Versi server: {server_at.isoformat(timespec='seconds')}. "
+                "Muat ulang, gabungkan perubahan manual jika perlu, lalu simpan lagi."
+            )
+    elif expected is not None:
+        raise EditorWorkspaceConflictError(
+            "Workspace editor di server kosong, tetapi browser masih membawa versi lama — "
+            "muat ulang sebelum menyimpan."
+        )
+
+
+def workspace_updated_at_iso(db: Session, project_id: int) -> str | None:
+    if not editor_has_rows(db, project_id):
+        return None
+    st = db.get(TimelineEditorState, project_id)
+    if not st or not st.updated_at:
+        return None
+    return st.updated_at.isoformat()
+
+
 def save_editor_rows(
     db: Session,
     project: Project,
     recalced: list[dict],
     start_date: date | None,
+    *,
+    expected_workspace_updated_at: datetime | str | None = None,
 ) -> list[dict]:
     assert_editor_save_allowed(project)
     project_id = project.id
+    assert_workspace_version(db, project_id, expected_workspace_updated_at)
     rows = list(recalced)
+    validate_timeline_predecessors(rows)
     validate_items = []
     for raw in rows:
         it = str(raw.get("item_type") or "phase")

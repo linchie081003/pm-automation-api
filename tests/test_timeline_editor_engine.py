@@ -1,6 +1,11 @@
 from datetime import date
 
-from app.services.timeline_editor_engine import recalc_timeline_editor_rows
+import pytest
+
+from app.services.timeline_editor_engine import (
+    recalc_timeline_editor_rows,
+    validate_timeline_predecessors,
+)
 
 
 def test_fan_out_one_predecessor_many_successors(monkeypatch):
@@ -227,3 +232,70 @@ def test_phase_duration_editable_when_only_milestone_child():
     by_key = {r["row_key"]: r for r in out}
     assert by_key["ph"]["target_date"] > "2026-11-19"
     assert by_key["ms"]["target_date"] == by_key["ph"]["target_date"]
+
+
+def test_validate_missing_predecessor_ref():
+    rows = [
+        {
+            "row_key": "a",
+            "name": "A",
+            "item_type": "task",
+            "predecessors": [{"predecessor_ref": "ghost", "link_type": "FS", "lag_days": 0}],
+        },
+    ]
+    with pytest.raises(ValueError, match="tidak ditemukan"):
+        validate_timeline_predecessors(rows)
+
+
+def test_validate_predecessor_cycle():
+    rows = [
+        {
+            "row_key": "a",
+            "name": "A",
+            "item_type": "task",
+            "predecessors": [{"predecessor_ref": "b", "link_type": "FS", "lag_days": 0}],
+        },
+        {
+            "row_key": "b",
+            "name": "B",
+            "item_type": "task",
+            "predecessors": [{"predecessor_ref": "a", "link_type": "FS", "lag_days": 0}],
+        },
+    ]
+    with pytest.raises(ValueError, match="Siklus predecessor"):
+        validate_timeline_predecessors(rows)
+
+
+def test_recalc_cycle_raises_not_silent(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.business_calendar.business_day_after",
+        lambda d, db=None: date(2026, 10, 2),
+    )
+    monkeypatch.setattr(
+        "app.services.business_calendar.add_business_days",
+        lambda start, days, db=None: date(2026, 10, 10),
+    )
+    monkeypatch.setattr(
+        "app.services.business_calendar.count_business_days_inclusive",
+        lambda s, e, db=None: 5,
+    )
+    rows = [
+        {
+            "row_key": "a",
+            "name": "A",
+            "item_type": "task",
+            "sort_order": 0,
+            "duration_days": 2,
+            "predecessors": [{"predecessor_ref": "b", "link_type": "FS", "lag_days": 0}],
+        },
+        {
+            "row_key": "b",
+            "name": "B",
+            "item_type": "task",
+            "sort_order": 1,
+            "duration_days": 2,
+            "predecessors": [{"predecessor_ref": "a", "link_type": "FS", "lag_days": 0}],
+        },
+    ]
+    with pytest.raises(ValueError, match="Siklus predecessor"):
+        recalc_timeline_editor_rows(None, rows, date(2026, 10, 1))

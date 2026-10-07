@@ -325,6 +325,113 @@ def _register_span(
             ends[str(rid)] = end_d
 
 
+def _known_row_refs(rows: list[dict]) -> dict[str, str]:
+    """Map ref/id string → display name for error messages."""
+    out: dict[str, str] = {}
+    for raw in rows:
+        rk = _row_ref(raw)
+        if not rk:
+            continue
+        label = str(raw.get("name") or rk).strip() or rk
+        out[rk] = label
+        if raw.get("id") is not None:
+            out[str(raw["id"])] = label
+    return out
+
+
+def _predecessor_successors_by_pred(rows: list[dict]) -> dict[str, list[str]]:
+    known = _known_row_refs(rows)
+    succs: dict[str, list[str]] = {k: [] for k in known}
+    for raw in rows:
+        succ = _row_ref(raw)
+        if not succ or succ not in known:
+            continue
+        for p in normalize_predecessors(raw):
+            pred = str(p.get("predecessor_ref") or "").strip()
+            if pred and pred in known:
+                succs.setdefault(pred, []).append(succ)
+    return succs
+
+
+def find_predecessor_cycle_path(rows: list[dict]) -> list[str] | None:
+    """Return refs on a predecessor dependency cycle (pred must finish before succ)."""
+    known = _known_row_refs(rows)
+    if not known:
+        return None
+    succs = _predecessor_successors_by_pred(rows)
+    color: dict[str, int] = dict.fromkeys(known, 0)
+    stack: list[str] = []
+
+    def dfs(u: str) -> list[str] | None:
+        color[u] = 1
+        stack.append(u)
+        for v in succs.get(u, []):
+            if color.get(v) == 1:
+                idx = stack.index(v)
+                return stack[idx:] + [v]
+            if color.get(v) == 0:
+                found = dfs(v)
+                if found:
+                    return found
+        stack.pop()
+        color[u] = 2
+        return None
+
+    for node in known:
+        if color[node] == 0:
+            found = dfs(node)
+            if found:
+                return found
+    return None
+
+
+def format_predecessor_cycle_message(rows: list[dict], path: list[str]) -> str:
+    labels = _known_row_refs(rows)
+    pretty = " → ".join(labels.get(ref, ref) for ref in path)
+    return (
+        f"Siklus predecessor terdeteksi: {pretty}. "
+        "Hapus atau ubah salah satu link agar tidak melingkar."
+    )
+
+
+def validate_timeline_predecessors(rows: list[dict]) -> None:
+    """Unknown refs, self-links, and dependency cycles."""
+    labels = _known_row_refs(rows)
+    known = set(labels.keys())
+
+    for raw in rows:
+        succ = _row_ref(raw)
+        succ_label = labels.get(succ, succ or "?")
+        for p in normalize_predecessors(raw):
+            pred = str(p.get("predecessor_ref") or "").strip()
+            if not pred:
+                continue
+            if pred not in known:
+                raise ValueError(
+                    f"Predecessor «{pred}» tidak ditemukan (baris «{succ_label}»). "
+                    "Pilih task/phase yang ada atau hapus link."
+                )
+            if pred == succ:
+                raise ValueError(
+                    f"Baris «{succ_label}» tidak boleh menjadi predecessor dirinya sendiri."
+                )
+
+    cycle = find_predecessor_cycle_path(rows)
+    if cycle:
+        raise ValueError(format_predecessor_cycle_message(rows, cycle))
+
+
+def _format_unresolved_recalc_rows(rows: list[dict], pending: list[dict]) -> str:
+    labels = _known_row_refs(rows)
+    names = []
+    for raw in pending[:8]:
+        rk = _row_ref(raw)
+        names.append(labels.get(rk, rk or str(raw.get("name") or "?")))
+    extra = len(pending) - len(names)
+    tail = f" (+{extra} lainnya)" if extra > 0 else ""
+    return ", ".join(names) + tail
+
+
 def recalc_timeline_editor_rows(
     db: Session | None,
     rows: list[dict],
@@ -334,6 +441,7 @@ def recalc_timeline_editor_rows(
     Auto-calc start/end from duration, business calendar, and multi-predecessor links.
     Returns new row dicts (does not mutate DB).
     """
+    validate_timeline_predecessors(rows)
     working = [dict(r) for r in rows]
     for raw in working:
         apply_schedule_driver_to_raw(db, raw)
@@ -404,6 +512,16 @@ def recalc_timeline_editor_rows(
         row["duration_days"] = count_business_days_inclusive(start_d, end_d, db)
         _register_span(starts, ends, row)
         pending.pop(0)
+
+    if pending:
+        cycle = find_predecessor_cycle_path(working)
+        if cycle:
+            raise ValueError(format_predecessor_cycle_message(working, cycle))
+        unresolved = _format_unresolved_recalc_rows(working, pending)
+        raise ValueError(
+            "Tidak bisa menyelesaikan jadwal untuk baris: "
+            f"{unresolved}. Periksa predecessor (link hilang, siklus, atau urutan parent)."
+        )
 
     _rollup_editor_dict_rows(working, db)
     for row in working:

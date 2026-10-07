@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -14,6 +14,7 @@ from app.services.timeline_editor import (
     timeline_editor_save,
     timeline_editor_snapshot,
 )
+from app.services.timeline_editor_store import EditorWorkspaceConflictError
 router = APIRouter(prefix="/projects", tags=["timeline-editor"])
 
 
@@ -44,6 +45,7 @@ class TimelineEditorRowIn(BaseModel):
 class TimelineEditorRecalcBody(BaseModel):
     start_date: date | None = None
     rows: list[TimelineEditorRowIn]
+    workspace_updated_at: datetime | None = None
 
 
 @router.get("/{project_id}/timeline-editor/snapshot")
@@ -90,7 +92,13 @@ def put_timeline_editor_save(
     ensure_project_write(project_id, user, codes, db)
     try:
         rows = [r.model_dump() for r in body.rows]
-        out = timeline_editor_save(db, project_id, rows, body.start_date)
+        out = timeline_editor_save(
+            db,
+            project_id,
+            rows,
+            body.start_date,
+            expected_workspace_updated_at=body.workspace_updated_at,
+        )
         log_activity(
             db,
             project_id,
@@ -100,6 +108,9 @@ def put_timeline_editor_save(
         )
         db.commit()
         return out
+    except EditorWorkspaceConflictError as e:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e)) from e
