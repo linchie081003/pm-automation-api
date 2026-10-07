@@ -5,7 +5,11 @@ import pytest
 
 from app.core.security import create_refresh_token, decode_token
 from app.models.auth import RefreshTokenSession
-from app.services.refresh_tokens import consume_refresh_token, revoke_refresh_token_raw
+from app.services.refresh_tokens import (
+    consume_refresh_token,
+    revoke_all_user_refresh_sessions,
+    revoke_refresh_token_raw,
+)
 
 
 def test_refresh_jwt_contains_jti():
@@ -60,3 +64,9 @@ def test_revoke_marks_session():
 
     revoke_refresh_token_raw(db, token)
     assert row.revoked_at is not None
+
+
+def test_revoke_all_user_sessions_updates_db():
+    db = MagicMock()
+    revoke_all_user_refresh_sessions(db, 9)
+    db.execute.assert_called_once()

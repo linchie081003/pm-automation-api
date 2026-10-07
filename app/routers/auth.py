@@ -4,13 +4,14 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
 from app.core.auth_cookies import REFRESH_COOKIE, clear_auth_cookies, set_auth_cookies
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, get_current_user_optional
 from app.core.rate_limit import check_rate_limit
 from app.core.security import create_access_token, verify_password
 from app.services.refresh_tokens import (
     consume_refresh_token,
     issue_refresh_token,
     purge_expired_refresh_sessions,
+    revoke_all_user_refresh_sessions,
     revoke_refresh_token_raw,
 )
 from app.database import get_db
@@ -86,8 +87,11 @@ def logout(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
+    user: User | None = Depends(get_current_user_optional),
 ):
     revoke_refresh_token_raw(db, request.cookies.get(REFRESH_COOKIE))
+    if user:
+        revoke_all_user_refresh_sessions(db, user.id)
     db.commit()
     clear_auth_cookies(response)
     return LoginResponse(ok=True)

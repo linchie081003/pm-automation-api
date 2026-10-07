@@ -17,7 +17,7 @@ from app.schemas.auth import (
 router = APIRouter(prefix="/roles", tags=["roles"])
 
 
-def _role_out(role: Role) -> RoleOut:
+def _role_out(role: Role, *, assigned_user_count: int = 0) -> RoleOut:
     return RoleOut(
         id=role.id,
         code=role.code,
@@ -25,6 +25,7 @@ def _role_out(role: Role) -> RoleOut:
         description=role.description,
         is_system=role.is_system,
         permission_codes=sorted(p.code for p in role.permissions),
+        assigned_user_count=assigned_user_count,
     )
 
 
@@ -45,7 +46,14 @@ def list_roles(
     roles = db.scalars(
         select(Role).options(selectinload(Role.permissions)).order_by(Role.code)
     ).all()
-    return [_role_out(r) for r in roles]
+    counts = dict(
+        db.execute(
+            select(user_roles.c.role_id, func.count())
+            .select_from(user_roles)
+            .group_by(user_roles.c.role_id)
+        ).all()
+    )
+    return [_role_out(r, assigned_user_count=int(counts.get(r.id, 0))) for r in roles]
 
 
 @router.post("", response_model=RoleOut)
