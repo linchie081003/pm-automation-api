@@ -7,9 +7,13 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user, get_permission_codes
 from app.database import get_db
 from app.models import User
-from app.core.project_access import ensure_permission, ensure_project_read
-from app.services.timeline_editor import timeline_editor_recalc, timeline_editor_snapshot
-
+from app.core.project_access import ensure_permission, ensure_project_read, ensure_project_write
+from app.services.activity import log_activity
+from app.services.timeline_editor import (
+    timeline_editor_recalc,
+    timeline_editor_save,
+    timeline_editor_snapshot,
+)
 router = APIRouter(prefix="/projects", tags=["timeline-editor"])
 
 
@@ -71,4 +75,31 @@ def post_timeline_editor_recalc(
         rows = [r.model_dump() for r in body.rows]
         return timeline_editor_recalc(db, project_id, rows, body.start_date)
     except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.put("/{project_id}/timeline-editor/save")
+def put_timeline_editor_save(
+    project_id: int,
+    body: TimelineEditorRecalcBody,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    codes: set[str] = Depends(get_permission_codes),
+):
+    ensure_permission(codes, "sph.write", "projects.write")
+    ensure_project_write(project_id, user, codes, db)
+    try:
+        rows = [r.model_dump() for r in body.rows]
+        out = timeline_editor_save(db, project_id, rows, body.start_date)
+        log_activity(
+            db,
+            project_id,
+            user.id,
+            "timeline_editor.saved",
+            {"rows": len(out.get("rows") or [])},
+        )
+        db.commit()
+        return out
+    except ValueError as e:
+        db.rollback()
         raise HTTPException(status_code=400, detail=str(e)) from e

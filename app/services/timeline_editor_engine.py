@@ -192,6 +192,11 @@ def _ref_depth(ref: str, by_ref: dict[str, dict], memo: dict[str, int]) -> int:
     return memo[ref]
 
 
+def _rollup_work_children(raw: dict) -> bool:
+    """Milestone gate tidak mendefinisikan span kerja parent — hanya task/phase/subtask."""
+    return str(raw.get("item_type") or "").lower() in ("phase", "task", "subtask")
+
+
 def _rollup_editor_dict_rows(working: list[dict], db: Session | None) -> None:
     by_ref = {_row_ref(r): r for r in working if _row_ref(r)}
     for ref in sorted(by_ref.keys(), key=lambda k: -_ref_depth(k, by_ref, {})):
@@ -199,9 +204,7 @@ def _rollup_editor_dict_rows(working: list[dict], db: Session | None) -> None:
         kids = [
             r
             for r in working
-            if str(r.get("parent_ref") or "").strip() == ref
-            and str(r.get("item_type") or "").lower()
-            in ("phase", "milestone", "task", "subtask")
+            if str(r.get("parent_ref") or "").strip() == ref and _rollup_work_children(r)
         ]
         if not kids:
             continue
@@ -215,6 +218,92 @@ def _rollup_editor_dict_rows(working: list[dict], db: Session | None) -> None:
         row["start_date"] = start_d.isoformat()
         row["target_date"] = end_d.isoformat()
         row["duration_days"] = count_business_days_inclusive(start_d, end_d, db)
+
+
+def _reschedule_rows_with_predecessors(
+    db: Session | None,
+    sched: list[dict],
+    working: list[dict],
+    starts: dict[str, date],
+    ends: dict[str, date],
+) -> None:
+    """
+    After phase rollup, predecessor ends may have moved (e.g. Development → UAT FS).
+    Re-apply predecessor constraints until stable.
+    """
+    max_passes = max(len(sched) * 2, 4)
+    for _ in range(max_passes):
+        changed = False
+        for row in sched:
+            preds = normalize_predecessors(row)
+            if not preds or not _preds_ready(preds, starts, ends):
+                continue
+            if str(row.get("item_type") or "phase").lower() == "milestone":
+                continue
+            try:
+                dur = max(int(row.get("duration_days") or 1), 1)
+            except (TypeError, ValueError):
+                dur = 1
+            start_d, end_d = _merge_multi_predecessor_span(db, preds, starts, ends, dur)
+            if not start_d or not end_d:
+                continue
+            new_s, new_e = start_d.isoformat(), end_d.isoformat()
+            if row.get("start_date") == new_s and row.get("target_date") == new_e:
+                continue
+            row["start_date"] = new_s
+            row["target_date"] = new_e
+            row["duration_days"] = count_business_days_inclusive(start_d, end_d, db)
+            _register_span(starts, ends, row)
+            changed = True
+        _rollup_editor_dict_rows(working, db)
+        for r in working:
+            if str(r.get("item_type") or "").lower() in ("phase", "task", "subtask"):
+                _register_span(starts, ends, r)
+        if not changed:
+            break
+
+
+def _default_milestone_gate_date(
+    row: dict,
+    working: list[dict],
+    by_ref: dict[str, dict],
+    project_start: date,
+) -> date:
+    """Gate milestone: default = akhir pekerjaan sibling (max target) atau akhir parent phase."""
+    my_key = _row_ref(row)
+    parent_ref = str(row.get("parent_ref") or "").strip()
+    sibling_ends: list[date] = []
+    for raw in working:
+        if _row_ref(raw) == my_key:
+            continue
+        if str(raw.get("parent_ref") or "").strip() != parent_ref:
+            continue
+        if str(raw.get("item_type") or "").lower() == "milestone":
+            continue
+        end_d = _parse_optional_date(raw.get("target_date"))
+        if end_d:
+            sibling_ends.append(end_d)
+    if sibling_ends:
+        return max(sibling_ends)
+    if parent_ref and parent_ref in by_ref:
+        pt = _parse_optional_date(by_ref[parent_ref].get("target_date"))
+        if pt:
+            return pt
+    return project_start
+
+
+def _milestone_gate_date(
+    row: dict,
+    working: list[dict],
+    by_ref: dict[str, dict],
+    project_start: date,
+) -> date:
+    default_day = _default_milestone_gate_date(row, working, by_ref, project_start)
+    driver = str(row.get("schedule_driver") or "").strip().lower()
+    manual = _parse_optional_date(row.get("target_date"))
+    if manual and driver in ("end", "milestone", "manual"):
+        return manual
+    return default_day
 
 
 def _register_span(
@@ -321,17 +410,12 @@ def recalc_timeline_editor_rows(
         if str(row.get("item_type") or "").lower() in ("phase", "task", "subtask"):
             _register_span(starts, ends, row)
 
+    _reschedule_rows_with_predecessors(db, sched, working, starts, ends)
+
     for row in working:
         if str(row.get("item_type") or "").lower() != "milestone":
             continue
-        parent_ref = str(row.get("parent_ref") or "").strip()
-        default_day = project_start
-        if parent_ref and parent_ref in by_ref:
-            pt = _parse_optional_date(by_ref[parent_ref].get("target_date"))
-            if pt:
-                default_day = pt
-        manual = _parse_optional_date(row.get("target_date"))
-        d = manual or default_day
+        d = _milestone_gate_date(row, working, by_ref, project_start)
         row["start_date"] = d.isoformat()
         row["target_date"] = d.isoformat()
         row["duration_days"] = 0

@@ -40,6 +40,9 @@ from app.models.domain import (
     ResourceRate,
     ScheduleBaseline,
     ScheduleBaselineMilestone,
+    TimelineEditorPredecessor,
+    TimelineEditorRow,
+    TimelineEditorState,
     WeeklyReport,
 )
 
@@ -71,6 +74,9 @@ __all__ = [
     "MilestoneStatus",
     "ScheduleBaseline",
     "ScheduleBaselineMilestone",
+    "TimelineEditorState",
+    "TimelineEditorRow",
+    "TimelineEditorPredecessor",
     "ProgressSnapshot",
     "ProgressSnapshotSource",
     "WeeklyReport",

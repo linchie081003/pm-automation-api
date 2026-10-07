@@ -1,17 +1,26 @@
-"""Timeline Editor (beta): read-only snapshot from SPH draft + optional stored multi-predecessors."""
+"""Timeline Editor (beta): isolated workspace tables + optional seed from SPH draft."""
 
 from __future__ import annotations
 
 from datetime import date
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import MilestonePredecessor, Project, ScheduleBaselineMilestone
-from app.services.draft_timeline import list_draft_rows
+from app.models import Project
+from app.services.project_lifecycle import draft_timeline_editable
+from app.services.timeline_schedule import compute_project_timeline_summary
 from app.services.sph import get_or_create_sph
-from app.services.schedule import get_draft_baseline, get_or_revive_sph_draft_baseline
-from app.services.timeline_editor_engine import normalize_predecessors, recalc_timeline_editor_payload
+from app.services.timeline_editor_engine import (
+    recalc_timeline_editor_payload,
+    recalc_timeline_editor_rows,
+)
+from app.services.timeline_editor_store import (
+    editor_has_rows,
+    get_editor_start_date,
+    list_editor_rows,
+    save_editor_rows,
+    seed_rows_from_draft,
+)
 
 
 def _parse_start(raw) -> date | None:
@@ -25,64 +34,68 @@ def _parse_start(raw) -> date | None:
         return None
 
 
-def _load_predecessors_by_row_id(db: Session, baseline_id: int) -> dict[int, list[dict]]:
-    rows = db.scalars(
-        select(ScheduleBaselineMilestone.id).where(
-            ScheduleBaselineMilestone.baseline_id == baseline_id
-        )
-    ).all()
-    if not rows:
-        return {}
-    row_ids = list(rows)
-    links = db.scalars(
-        select(MilestonePredecessor)
-        .where(MilestonePredecessor.milestone_row_id.in_(row_ids))
-        .order_by(MilestonePredecessor.milestone_row_id, MilestonePredecessor.sort_order)
-    ).all()
-    out: dict[int, list[dict]] = {}
-    for link in links:
-        out.setdefault(link.milestone_row_id, []).append(
-            {
-                "predecessor_ref": link.predecessor_ref,
-                "link_type": (link.link_type or "FS").upper(),
-                "lag_days": int(link.lag_days or 0),
-            }
-        )
-    return out
+def _effective_start(db: Session, project_id: int, sph) -> date | None:
+    return get_editor_start_date(db, project_id) or _parse_start(sph.estimated_start_date)
 
 
 def timeline_editor_snapshot(db: Session, project_id: int) -> dict:
-    """Copy of draft baseline rows for sandbox UI (does not touch live milestones)."""
     project = db.get(Project, project_id)
     if not project:
         raise ValueError("Project not found")
     sph = get_or_create_sph(db, project_id)
-    draft = get_draft_baseline(db, project_id) or get_or_revive_sph_draft_baseline(
-        db, project_id
-    )
-    preds_by_row: dict[int, list[dict]] = {}
-    if draft:
-        preds_by_row = _load_predecessors_by_row_id(db, draft.id)
 
-    rows = list_draft_rows(db, project_id)
-    enriched: list[dict] = []
-    for row in rows:
-        copy = dict(row)
-        rid = copy.get("id")
-        if isinstance(rid, int) and rid in preds_by_row:
-            copy["predecessors"] = preds_by_row[rid]
-        else:
-            copy["predecessors"] = normalize_predecessors(copy)
-        enriched.append(copy)
+    if editor_has_rows(db, project_id):
+        rows = list_editor_rows(db, project_id)
+        start = get_editor_start_date(db, project_id) or _parse_start(sph.estimated_start_date)
+        storage_source = "timeline_editor"
+        note = (
+            "Workspace beta tersimpan di tabel timeline_editor_* — terpisah dari draft SPH "
+            "dan milestone live."
+        )
+    else:
+        rows = seed_rows_from_draft(db, project_id)
+        start = _parse_start(sph.estimated_start_date)
+        storage_source = "draft_seed" if rows else "empty"
+        note = (
+            "Belum ada simpanan editor — tampilan dari salinan draft SPH (jika ada). "
+            "Gunakan Simpan untuk menulis ke workspace beta."
+        )
 
-    start = _parse_start(sph.estimated_start_date)
     return {
         "project_id": project_id,
         "start_date": start.isoformat() if start else None,
-        "rows": enriched,
-        "read_only_source": "schedule_baseline_draft",
-        "note": "Sandbox beta — perubahan di sini tidak menulis tab SPH/Timeline live kecuali nanti via Apply.",
+        "rows": rows,
+        "draft_timeline_writable": True,
+        "save_block_reason": None,
+        "storage_source": storage_source,
+        "read_only_source": storage_source,
+        "sph_draft_writable": draft_timeline_editable(project, sph=sph),
+        "note": note,
     }
+
+
+def timeline_editor_save(
+    db: Session,
+    project_id: int,
+    rows: list[dict],
+    start_date: date | None,
+) -> dict:
+    project = db.get(Project, project_id)
+    if not project:
+        raise ValueError("Project not found")
+    sph = get_or_create_sph(db, project_id)
+    eff = start_date or _effective_start(db, project_id, sph)
+    if not eff:
+        raise ValueError("Isi tanggal mulai proyek sebelum simpan.")
+
+    recalced = recalc_timeline_editor_rows(db, rows, eff)
+    for i, raw in enumerate(recalced):
+        raw["sort_order"] = i
+
+    save_editor_rows(db, project, recalced, eff)
+    snap = timeline_editor_snapshot(db, project_id)
+    snap["project_timeline"] = compute_project_timeline_summary(db, snap["rows"], eff)
+    return snap
 
 
 def timeline_editor_recalc(
@@ -95,7 +108,7 @@ def timeline_editor_recalc(
     if not project:
         raise ValueError("Project not found")
     sph = get_or_create_sph(db, project_id)
-    eff = start_date or _parse_start(sph.estimated_start_date)
+    eff = start_date or _effective_start(db, project_id, sph)
     if not eff:
         raise ValueError("Isi tanggal mulai proyek (estimasi start) terlebih dahulu")
     payload = recalc_timeline_editor_payload(db, rows, eff)

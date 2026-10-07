@@ -231,6 +231,65 @@ class MilestonePredecessor(Base):
     )
 
 
+class TimelineEditorState(Base):
+    """Per-project workspace for Timeline Editor (beta) — isolated from SPH draft baseline."""
+
+    __tablename__ = "timeline_editor_states"
+
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_jakarta)
+
+
+class TimelineEditorRow(Base):
+    __tablename__ = "timeline_editor_rows"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    target_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    weight_pct: Mapped[float] = mapped_column(Float, default=0.0)
+    duration_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    item_type: Mapped[TimelineItemType] = mapped_column(
+        Enum(TimelineItemType), default=TimelineItemType.phase
+    )
+    parent_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("timeline_editor_rows.id"), nullable=True, index=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    row_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    predecessor_ref: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    predecessor_link_type: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
+    schedule_driver: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+
+    predecessors: Mapped[list["TimelineEditorPredecessor"]] = relationship(
+        back_populates="editor_row",
+        cascade="all, delete-orphan",
+        order_by="TimelineEditorPredecessor.sort_order",
+    )
+
+
+class TimelineEditorPredecessor(Base):
+    __tablename__ = "timeline_editor_predecessors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    editor_row_id: Mapped[int] = mapped_column(
+        ForeignKey("timeline_editor_rows.id", ondelete="CASCADE"),
+        index=True,
+    )
+    predecessor_ref: Mapped[str] = mapped_column(String(64))
+    link_type: Mapped[str] = mapped_column(String(8), default="FS")
+    lag_days: Mapped[int] = mapped_column(Integer, default=0)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    editor_row: Mapped["TimelineEditorRow"] = relationship(back_populates="predecessors")
+
+
 class ProgressSnapshot(Base):
     __tablename__ = "progress_snapshots"
 

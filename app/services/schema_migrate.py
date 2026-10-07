@@ -170,6 +170,43 @@ def ensure_phase_af_columns(engine: Engine) -> None:
         )
         """,
         "CREATE INDEX IF NOT EXISTS ix_milestone_predecessors_row ON milestone_predecessors (milestone_row_id)",
+        """
+        CREATE TABLE IF NOT EXISTS timeline_editor_states (
+            project_id INTEGER PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+            start_date DATE,
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS timeline_editor_rows (
+            id SERIAL PRIMARY KEY,
+            project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            name VARCHAR(255) NOT NULL,
+            start_date DATE,
+            target_date DATE,
+            weight_pct DOUBLE PRECISION NOT NULL DEFAULT 0,
+            duration_days INTEGER,
+            item_type timelineitemtype NOT NULL DEFAULT 'phase',
+            parent_id INTEGER REFERENCES timeline_editor_rows(id),
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            row_key VARCHAR(64),
+            predecessor_ref VARCHAR(64),
+            predecessor_link_type VARCHAR(8),
+            schedule_driver VARCHAR(32)
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_timeline_editor_rows_project ON timeline_editor_rows (project_id)",
+        """
+        CREATE TABLE IF NOT EXISTS timeline_editor_predecessors (
+            id SERIAL PRIMARY KEY,
+            editor_row_id INTEGER NOT NULL REFERENCES timeline_editor_rows(id) ON DELETE CASCADE,
+            predecessor_ref VARCHAR(64) NOT NULL,
+            link_type VARCHAR(8) NOT NULL DEFAULT 'FS',
+            lag_days INTEGER NOT NULL DEFAULT 0,
+            sort_order INTEGER NOT NULL DEFAULT 0
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_timeline_editor_pred_row ON timeline_editor_predecessors (editor_row_id)",
     ]
     enum_values = ["phase", "subtask"]
     doc_type_values = [

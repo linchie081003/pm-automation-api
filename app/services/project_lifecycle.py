@@ -33,7 +33,11 @@ def kickoff_draft_timeline_editable(project: Project, *, sph: ProjectSph | None 
         return False
     if sph is None or not sph.draft_baseline_generated_at:
         return False
-    return project.current_phase in (ProjectPhase.pre_kickoff, ProjectPhase.kickoff)
+    return project.current_phase in (
+        ProjectPhase.po_received,
+        ProjectPhase.pre_kickoff,
+        ProjectPhase.kickoff,
+    )
 
 
 def draft_timeline_editable(project: Project, *, sph: ProjectSph | None = None) -> bool:
