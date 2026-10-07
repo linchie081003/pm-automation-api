@@ -100,7 +100,6 @@ class RoleOut(BaseModel):
     is_system: bool
     permission_codes: list[str] = []
     assigned_user_count: int = 0
-    assigned_user_count: int = 0
 
     model_config = {"from_attributes": True}
 
