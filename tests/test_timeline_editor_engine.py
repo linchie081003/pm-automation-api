@@ -6,6 +6,7 @@ from app.services.timeline_editor_engine import (
     recalc_timeline_editor_rows,
     validate_timeline_predecessors,
 )
+from app.services.timeline_schedule import infer_milestone_schedule_driver
 
 
 def test_fan_out_one_predecessor_many_successors(monkeypatch):
@@ -166,6 +167,55 @@ def test_root_phase_uat_fs_after_development_rollup():
     uat_start = by_key["ph_uat"]["start_date"]
     assert dev_end >= by_key["t_dev"]["target_date"]
     assert uat_start > dev_end
+
+
+def test_draft_seed_milestone_manual_date_preserved(monkeypatch):
+    """After infer (draft SPH seed), manual gate date survives first recalc."""
+    monkeypatch.setattr(
+        "app.services.business_calendar.business_day_after",
+        lambda d, db=None: date(2026, 10, 6),
+    )
+    monkeypatch.setattr(
+        "app.services.business_calendar.add_business_days",
+        lambda start, days, db=None: date(2026, 12, 1) if days > 5 else date(2026, 10, 8),
+    )
+    monkeypatch.setattr(
+        "app.services.business_calendar.count_business_days_inclusive",
+        lambda s, e, db=None: 2,
+    )
+    rows = [
+        {
+            "row_key": "ph",
+            "name": "Phase",
+            "item_type": "phase",
+            "parent_ref": None,
+            "sort_order": 0,
+            "duration_days": 10,
+        },
+        {
+            "row_key": "t1",
+            "name": "Work",
+            "item_type": "task",
+            "parent_ref": "ph",
+            "sort_order": 1,
+            "duration_days": 2,
+        },
+        {
+            "row_key": "ms_pay",
+            "name": "Payment gate",
+            "item_type": "milestone",
+            "parent_ref": "ph",
+            "sort_order": 2,
+            "target_date": "2026-12-01",
+            "start_date": "2026-12-01",
+        },
+    ]
+    for raw in rows:
+        infer_milestone_schedule_driver(raw)
+    assert rows[2]["schedule_driver"] == "milestone"
+    out = recalc_timeline_editor_rows(None, rows, date(2026, 10, 1))
+    by_key = {r["row_key"]: r for r in out}
+    assert by_key["ms_pay"]["target_date"] == "2026-12-01"
 
 
 def test_milestone_gate_uses_sibling_end_not_stale_target():

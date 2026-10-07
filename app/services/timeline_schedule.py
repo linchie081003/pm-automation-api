@@ -75,6 +75,21 @@ def compute_project_timeline_summary(
     }
 
 
+def infer_milestone_schedule_driver(raw: dict) -> None:
+    """
+    Draft SPH rows persist gate dates but not schedule_driver — mark manual gates so
+    timeline editor recalc does not treat target_date as stale task leftovers.
+    """
+    if str(raw.get("item_type") or "").lower() != "milestone":
+        return
+    if str(raw.get("schedule_driver") or "").strip():
+        return
+    if _parse_optional_date(raw.get("target_date")) or _parse_optional_date(
+        raw.get("start_date")
+    ):
+        raw["schedule_driver"] = "milestone"
+
+
 def apply_schedule_driver_to_raw(db: Session | None, raw: dict) -> None:
     """
     Normalize row before insert: honor UI edit intent (duration / start / end).

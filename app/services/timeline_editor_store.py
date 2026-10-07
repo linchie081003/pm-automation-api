@@ -18,6 +18,7 @@ from app.models import (
 )
 from app.services.draft_timeline import list_draft_rows
 from app.services.timeline_editor_engine import normalize_predecessors, validate_timeline_predecessors
+from app.services.timeline_schedule import infer_milestone_schedule_driver
 from app.services.timeline_item_type import parse_timeline_item_type
 from app.services.timeline_validation import validate_timeline_items
 
@@ -54,7 +55,7 @@ def _row_to_dict(
 ) -> dict:
     parent_ref = id_to_row_key.get(r.parent_id) if r.parent_id else None
     first = preds[0] if preds else None
-    return {
+    out = {
         "id": r.id,
         "row_key": r.row_key,
         "name": r.name,
@@ -75,6 +76,8 @@ def _row_to_dict(
         "schedule_driver": r.schedule_driver,
         "predecessors": preds,
     }
+    infer_milestone_schedule_driver(out)
+    return out
 
 
 def list_editor_rows(db: Session, project_id: int) -> list[dict]:

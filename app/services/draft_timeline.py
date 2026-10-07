@@ -10,6 +10,7 @@ from app.services.timeline_item_type import parse_timeline_item_type
 from app.services.timeline_schedule import (
     apply_schedule_driver_to_raw,
     compute_project_timeline_summary,
+    infer_milestone_schedule_driver,
     schedule_draft_milestone_rows,
 )
 from app.services.timeline_validation import validate_timeline_items
@@ -35,7 +36,7 @@ def _row_out(
     parent_ref = None
     if r.parent_id and id_to_row_key:
         parent_ref = id_to_row_key.get(r.parent_id)
-    return {
+    out = {
         "id": r.id,
         "row_key": r.row_key,
         "name": r.name,
@@ -53,6 +54,8 @@ def _row_out(
         if r.predecessor_ref
         else None,
     }
+    infer_milestone_schedule_driver(out)
+    return out
 
 
 def list_draft_rows(db: Session, project_id: int) -> list[dict]:
