@@ -61,6 +61,12 @@ class PaymentTermIn(BaseModel):
     draft_milestone_row_key: str | None = None
 
 
+class DraftPredecessorIn(BaseModel):
+    predecessor_ref: str
+    link_type: str = "FS"
+    lag_days: int = Field(default=0, ge=0)
+
+
 class DraftRowIn(BaseModel):
     id: int | None = None
     row_key: str | None = None
@@ -77,6 +83,7 @@ class DraftRowIn(BaseModel):
     predecessor_ref: str | None = None
     predecessor_link_type: str | None = None
     schedule_driver: str | None = None
+    predecessors: list[DraftPredecessorIn] = Field(default_factory=list)
 
 
 class DraftTimelineUpdate(BaseModel):

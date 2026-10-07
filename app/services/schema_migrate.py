@@ -170,6 +170,18 @@ def ensure_phase_af_columns(engine: Engine) -> None:
         )
         """,
         "CREATE INDEX IF NOT EXISTS ix_milestone_predecessors_row ON milestone_predecessors (milestone_row_id)",
+        "ALTER TABLE schedule_baseline_milestones ADD COLUMN IF NOT EXISTS schedule_driver VARCHAR(32)",
+        """
+        CREATE TABLE IF NOT EXISTS milestone_live_predecessors (
+            id SERIAL PRIMARY KEY,
+            milestone_id INTEGER NOT NULL REFERENCES milestones(id) ON DELETE CASCADE,
+            predecessor_ref VARCHAR(64) NOT NULL,
+            link_type VARCHAR(8) NOT NULL DEFAULT 'FS',
+            lag_days INTEGER NOT NULL DEFAULT 0,
+            sort_order INTEGER NOT NULL DEFAULT 0
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_milestone_live_pred ON milestone_live_predecessors (milestone_id)",
         """
         CREATE TABLE IF NOT EXISTS timeline_editor_states (
             project_id INTEGER PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,

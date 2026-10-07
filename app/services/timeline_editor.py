@@ -14,6 +14,7 @@ from app.services.timeline_editor_engine import (
     recalc_timeline_editor_payload,
     recalc_timeline_editor_rows,
 )
+from app.services.draft_timeline import save_draft_rows
 from app.services.timeline_editor_store import (
     editor_has_rows,
     get_editor_start_date,
@@ -106,6 +107,31 @@ def timeline_editor_save(
     snap = timeline_editor_snapshot(db, project_id)
     snap["project_timeline"] = compute_project_timeline_summary(db, snap["rows"], eff)
     return snap
+
+
+def timeline_editor_apply_to_draft(db: Session, project_id: int) -> dict:
+    """Copy persisted beta workspace into official SPH draft baseline."""
+    project = db.get(Project, project_id)
+    if not project:
+        raise ValueError("Project not found")
+    sph = get_or_create_sph(db, project_id)
+    if not draft_timeline_editable(project, sph=sph):
+        raise ValueError(
+            "Draft timeline read-only — selesaikan di SPH, atau sudah dikonfirmasi di Kick Off"
+        )
+    if not editor_has_rows(db, project_id):
+        raise ValueError("Workspace Timeline Editor kosong — simpan di tab Beta terlebih dahulu.")
+    rows = list_editor_rows(db, project_id)
+    start = get_editor_start_date(db, project_id) or _parse_start(sph.estimated_start_date)
+    if not start:
+        raise ValueError("Isi tanggal mulai proyek sebelum menerapkan ke draft SPH.")
+    saved = save_draft_rows(db, project, rows, start)
+    return {
+        "project_id": project_id,
+        "start_date": start.isoformat(),
+        "draft_timeline": saved,
+        "project_timeline": compute_project_timeline_summary(db, saved, start),
+    }
 
 
 def timeline_editor_recalc(

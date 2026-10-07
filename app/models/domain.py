@@ -155,6 +155,29 @@ class Milestone(Base):
     clickup_task_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
     project: Mapped["Project"] = relationship(back_populates="milestones")
+    live_predecessors: Mapped[list["MilestoneLivePredecessor"]] = relationship(
+        back_populates="milestone",
+        cascade="all, delete-orphan",
+        order_by="MilestoneLivePredecessor.sort_order",
+    )
+
+
+class MilestoneLivePredecessor(Base):
+    """Multi-predecessor links on live milestones (post Kick Off)."""
+
+    __tablename__ = "milestone_live_predecessors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    milestone_id: Mapped[int] = mapped_column(
+        ForeignKey("milestones.id", ondelete="CASCADE"),
+        index=True,
+    )
+    predecessor_ref: Mapped[str] = mapped_column(String(64))
+    link_type: Mapped[str] = mapped_column(String(8), default="FS")
+    lag_days: Mapped[int] = mapped_column(Integer, default=0)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    milestone: Mapped["Milestone"] = relationship(back_populates="live_predecessors")
 
 
 class ScheduleBaseline(Base):
@@ -202,6 +225,7 @@ class ScheduleBaselineMilestone(Base):
     row_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     predecessor_ref: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     predecessor_link_type: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
+    schedule_driver: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
 
     baseline: Mapped["ScheduleBaseline"] = relationship(back_populates="milestone_rows")
     editor_predecessors: Mapped[list["MilestonePredecessor"]] = relationship(

@@ -10,6 +10,7 @@ from app.models import User
 from app.core.project_access import ensure_permission, ensure_project_read, ensure_project_write
 from app.services.activity import log_activity
 from app.services.timeline_editor import (
+    timeline_editor_apply_to_draft,
     timeline_editor_recalc,
     timeline_editor_save,
     timeline_editor_snapshot,
@@ -77,6 +78,31 @@ def post_timeline_editor_recalc(
         rows = [r.model_dump() for r in body.rows]
         return timeline_editor_recalc(db, project_id, rows, body.start_date)
     except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.post("/{project_id}/timeline-editor/apply-to-draft")
+def post_timeline_editor_apply_to_draft(
+    project_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    codes: set[str] = Depends(get_permission_codes),
+):
+    ensure_permission(codes, "sph.write", "projects.write")
+    ensure_project_write(project_id, user, codes, db)
+    try:
+        out = timeline_editor_apply_to_draft(db, project_id)
+        log_activity(
+            db,
+            project_id,
+            user.id,
+            "timeline_editor.apply_to_draft",
+            {"rows": len(out.get("draft_timeline") or [])},
+        )
+        db.commit()
+        return out
+    except ValueError as e:
+        db.rollback()
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 

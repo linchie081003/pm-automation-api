@@ -420,6 +420,90 @@ def _phase_ref(p: PhaseSnapshot, index: int) -> str:
     return f"i:{index}"
 
 
+def _parse_iso_date(raw) -> date | None:
+    if raw is None:
+        return None
+    if isinstance(raw, date):
+        return raw
+    s = str(raw).strip()[:10]
+    try:
+        return date.fromisoformat(s)
+    except ValueError:
+        return None
+
+
+def _recalc_proposed_phases_via_editor_engine(
+    db: Session,
+    proposed: list[PhaseSnapshot],
+    *,
+    project_start: date | None,
+    lifecycle_by_id: dict[int, str] | None,
+) -> list[PhaseSnapshot]:
+    from app.services.timeline_recalc_adapter import recalc_draft_dict_rows
+
+    lifecycle_by_id = lifecycle_by_id or {}
+    sorted_p = sorted(proposed, key=lambda x: (x.sort_order, x.milestone_id or 0))
+    dict_rows: list[dict] = []
+    for i, p in enumerate(sorted_p):
+        ref = _phase_ref(p, i)
+        preds: list[dict] = []
+        pred_ref = (p.predecessor_ref or "").strip()
+        if pred_ref:
+            preds.append(
+                {
+                    "predecessor_ref": pred_ref,
+                    "link_type": (p.predecessor_link_type or "FS").upper(),
+                    "lag_days": 0,
+                }
+            )
+        dict_rows.append(
+            {
+                "row_key": ref,
+                "name": p.name,
+                "item_type": "phase",
+                "sort_order": p.sort_order,
+                "duration_days": max(int(p.duration_days or 1), 1),
+                "weight_pct": p.weight_pct,
+                "start_date": p.start_date.isoformat() if p.start_date else None,
+                "target_date": p.target_date.isoformat() if p.target_date else None,
+                "predecessors": preds,
+                "predecessor_ref": p.predecessor_ref,
+                "predecessor_link_type": p.predecessor_link_type,
+            }
+        )
+
+    eff_start = project_start or today_jakarta()
+    recalced = recalc_draft_dict_rows(db, dict_rows, eff_start)
+    by_ref = {str(r.get("row_key")): r for r in recalced}
+
+    out: list[PhaseSnapshot] = []
+    for i, p in enumerate(sorted_p):
+        if p.milestone_id and lifecycle_by_id.get(p.milestone_id) == "closed":
+            out.append(p)
+            continue
+        ref = _phase_ref(p, i)
+        r = by_ref.get(ref, {})
+        start_d = _parse_iso_date(r.get("start_date")) or p.start_date
+        target_d = _parse_iso_date(r.get("target_date")) or p.target_date
+        dur = r.get("duration_days")
+        out.append(
+            PhaseSnapshot(
+                name=p.name,
+                start_date=start_d,
+                target_date=target_d,
+                weight_pct=p.weight_pct,
+                milestone_id=p.milestone_id,
+                client_key=p.client_key,
+                sort_order=p.sort_order,
+                notes=p.notes,
+                predecessor_ref=p.predecessor_ref,
+                predecessor_link_type=p.predecessor_link_type,
+                duration_days=int(dur) if dur is not None else p.duration_days,
+            )
+        )
+    return out
+
+
 def recalc_proposed_phases_dates(
     db: Session,
     proposed: list[PhaseSnapshot],
@@ -428,6 +512,13 @@ def recalc_proposed_phases_dates(
     lifecycle_by_id: dict[int, str] | None = None,
 ) -> list[PhaseSnapshot]:
     """Predecessor links FS/SS/FF/SF using hari kerja + libur (draft timeline engine)."""
+    from app.services.timeline_engine_config import use_timeline_engine_v2
+
+    if use_timeline_engine_v2():
+        return _recalc_proposed_phases_via_editor_engine(
+            db, proposed, project_start=project_start, lifecycle_by_id=lifecycle_by_id
+        )
+
     from app.services.business_calendar import (
         add_business_days,
         business_day_after,

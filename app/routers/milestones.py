@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models import (
     ClickUpTaskCache,
     Milestone,
+    MilestoneLivePredecessor,
     MilestoneStatus,
     Project,
     ProjectMemberRole,
@@ -37,6 +38,56 @@ from app.services.project_lifecycle import (
 from app.services.live_timeline import apply_project_timeline_start
 
 router = APIRouter(tags=["milestones"])
+
+
+class LivePredecessorOut(BaseModel):
+    predecessor_ref: str
+    link_type: str = "FS"
+    lag_days: int = 0
+    predecessor_name: str | None = None
+
+
+def _resolve_live_pred_ref(ref: str, by_id: dict[int, Milestone]) -> str | None:
+    s = (ref or "").strip()
+    if not s:
+        return None
+    if s.startswith("m:"):
+        try:
+            mid = int(s[2:])
+        except ValueError:
+            return s
+        return by_id.get(mid).name if mid in by_id else s
+    try:
+        mid = int(s)
+        return by_id.get(mid).name if mid in by_id else s
+    except ValueError:
+        return s
+
+
+def _live_predecessors_for_milestones(
+    db: Session,
+    ms_list: list[Milestone],
+) -> dict[int, list[dict]]:
+    if not ms_list:
+        return {}
+    ids = [m.id for m in ms_list]
+    by_id = {m.id: m for m in ms_list}
+    links = db.scalars(
+        select(MilestoneLivePredecessor)
+        .where(MilestoneLivePredecessor.milestone_id.in_(ids))
+        .order_by(MilestoneLivePredecessor.milestone_id, MilestoneLivePredecessor.sort_order)
+    ).all()
+    out: dict[int, list[dict]] = {}
+    for link in links:
+        out.setdefault(link.milestone_id, []).append(
+            {
+                "predecessor_ref": link.predecessor_ref,
+                "link_type": (link.link_type or "FS").upper(),
+                "lag_days": int(link.lag_days or 0),
+                "predecessor_name": _resolve_live_pred_ref(link.predecessor_ref, by_id),
+            }
+        )
+    return out
 
 
 def _require_milestone_editable(db: Session, project_id: int) -> Project:
@@ -85,6 +136,7 @@ class MilestoneOut(BaseModel):
     phase_status: str | None = None
     timeline_dates_inherited: bool | None = None
     schedule_anomalies: list[str] = Field(default_factory=list)
+    live_predecessors: list[LivePredecessorOut] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 
@@ -137,6 +189,7 @@ def list_milestones(
         ).all()
     )
     ms_list = list(ms)
+    preds_by_mid = _live_predecessors_for_milestones(db, ms_list)
     with clickup_status_mapping_context(db):
         tasks_by_id, milestone_cache = build_clickup_lookups(ms_list, caches)
         pdc_rows: list[dict] = []
@@ -147,6 +200,7 @@ def list_milestones(
                     m, ms_list, tasks_by_id, milestone_cache, caches=caches, db=db
                 )
             )
+            base["live_predecessors"] = preds_by_mid.get(m.id, [])
             pdc_rows.append(base)
         merged = merge_timeline_with_clickup(
             pdc_rows, ms_list, caches, db=db, project=project
