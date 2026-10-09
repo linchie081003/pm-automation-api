@@ -40,7 +40,8 @@ class Settings(BaseSettings):
     skip_template_verify: bool = False
     seed_timeline_templates_on_startup: bool = False
     # v1 = legacy schedule_draft_milestone_rows; v2 = recalc_timeline_editor_rows
-    timeline_engine: str = "v1"
+    #timeline_engine: str = "v1"
+    timeline_engine: str = "v2"
 
     @property
     def templates_path(self) -> Path:
