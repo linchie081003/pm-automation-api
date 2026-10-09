@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import date
 from pathlib import Path
@@ -54,19 +55,29 @@ def _ensure_clickup_ready(db: Session, project: Project) -> None:
         raise ValueError("Belum ada task ClickUp — sync gagal atau list kosong.")
 
 
+def _safe_project_name_for_file(project_name: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9_-]+", "_", (project_name or "").strip()).strip("_")
+    return safe or "project"
+
+
 def _next_weekly_report_doc_version(
-    db: Session, project_id: int, stamp: str, code: str
+    db: Session, project_id: int, stamp: str, project_name: str
 ) -> int:
     from app.models import Document
 
+    safe_name = _safe_project_name_for_file(project_name)
+    prefix = f"{stamp}_{safe_name}"
     filenames = db.scalars(
         select(Document.filename).where(
             Document.project_id == project_id,
-            Document.filename.like(f"{stamp}_Weekly_Report_{code}%"),
+            Document.filename.like(f"{prefix}%"),
         )
     ).all()
     max_v = 0
+    xlsx_count = 0
     for fn in filenames:
+        if fn.lower().endswith(".xlsx"):
+            xlsx_count += 1
         if "_v" not in fn:
             max_v = max(max_v, 1)
             continue
@@ -75,11 +86,11 @@ def _next_weekly_report_doc_version(
             max_v = max(max_v, int(tail.split(".")[0]))
         except ValueError:
             continue
-    return max_v + 1
+    return max(max_v + 1, xlsx_count + 1, 1)
 
 
-def _report_file_basename(stamp: str, code: str, version: int) -> str:
-    return f"{stamp}_Weekly_Report_{code}_v{version:02d}"
+def _report_file_basename(stamp: str, project_name: str) -> str:
+    return f"{stamp}_{_safe_project_name_for_file(project_name)}"
 
 
 def _resolve_preview_metrics(
@@ -224,7 +235,7 @@ def preview_weekly_report(
         "already_exists": existing is not None,
         "existing_report_id": existing.id if existing else None,
         "next_document_version": _next_weekly_report_doc_version(
-            db, project_id, week_start.strftime("%Y%m%d"), project.code
+            db, project_id, week_end.strftime("%Y%m%d"), project.name
         ),
         "project_code": project.code,
         "project_name": project.name,
@@ -389,8 +400,8 @@ def generate_weekly_report(
     report.week_end = week_end
     snap.weekly_report_id = report.id
 
-    stamp = report.week_start.strftime("%Y%m%d")
-    doc_version = _next_weekly_report_doc_version(db, project_id, stamp, project.code)
+    stamp = report.week_end.strftime("%Y%m%d")
+    doc_version = _next_weekly_report_doc_version(db, project_id, stamp, project.name)
     xlsx_path, pptx_path = _write_report_files(
         db, project, report, milestones, tasks, file_version=doc_version
     )
@@ -403,7 +414,7 @@ def generate_weekly_report(
     from app.models import DocumentType
     from app.services.document_registry import register_file_as_document
 
-    base = _report_file_basename(stamp, project.code, doc_version)
+    base = _report_file_basename(stamp, project.name)
     if xlsx_path:
         register_file_as_document(
             db,
@@ -459,8 +470,8 @@ def _write_report_files(
 ) -> tuple[str, str]:
     out_dir = Path(settings.upload_dir) / "reports" / str(project.id)
     out_dir.mkdir(parents=True, exist_ok=True)
-    stamp = report.week_start.strftime("%Y%m%d")
-    file_base = _report_file_basename(stamp, project.code, file_version)
+    stamp = report.week_end.strftime("%Y%m%d")
+    file_base = _report_file_basename(stamp, project.name)
     summary = report.summary or {}
     highlights = summary.get("highlights") or ""
     mitigation = summary.get("mitigation_plan") or ""

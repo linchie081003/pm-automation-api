@@ -76,7 +76,8 @@ def delivery_week_metrics(
         ProgressSnapshotSource.weekly_report,
         ProgressSnapshotSource.manual_save,
     }
-    in_progress = as_of is None and metrics_as_of < cut_off
+    today = today_jakarta()
+    in_progress = as_of is None and today <= cut_off
 
     if snap and snap.source in frozen_sources and not in_progress:
         planned = snap.planned_cumulative_pct
