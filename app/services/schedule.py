@@ -786,6 +786,7 @@ def scurve_points(
     current = get_current_baseline(db, project_id)
 
     points: list[dict] = []
+    active_period_seen = False
     for anchor in anchors:
         if anchor < range_start or anchor > range_end:
             continue
@@ -808,6 +809,10 @@ def scurve_points(
         frozen = False
         baseline_version = current.version if current else None
 
+        is_not_yet_started = cut_off > today and active_period_seen
+        if cut_off >= today:
+            active_period_seen = True
+
         if snap and snap.source in (
             ProgressSnapshotSource.weekly_report,
             ProgressSnapshotSource.manual_save,
@@ -817,6 +822,9 @@ def scurve_points(
             spi = snap.spi_at_week
             baseline_version = snap.baseline_version
             frozen = True
+        elif is_not_yet_started:
+            actual = None
+            spi = None
         else:
             metrics_as_of = min(today, cut_off)
             actual = resolve_actual_progress(db, project, metrics_as_of)
