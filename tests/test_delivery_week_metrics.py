@@ -18,11 +18,13 @@ def test_active_week_uses_target_snapshot_and_live_actual():
 
     db = MagicMock()
 
-    with patch("app.services.progress_metrics.snapshot_for_anchor_week", return_value=snap), patch(
-        "app.services.progress_metrics.kickoff_milestones", return_value=[MagicMock()]
-    ), patch(
+    with patch("app.services.progress_metrics.today_jakarta", return_value=date(2026, 9, 26)), patch(
+        "app.services.progress_metrics.snapshot_for_anchor_week", return_value=snap
+    ), patch("app.services.progress_metrics.kickoff_milestones", return_value=[MagicMock()]), patch(
         "app.services.progress_metrics.active_report_week_context",
         return_value=(date(2026, 9, 26), date(2026, 9, 26), date(2026, 9, 26), date(2026, 9, 26)),
+    ), patch(
+        "app.services.progress_metrics.planned_pct_as_of", return_value=92.5
     ), patch(
         "app.services.progress_metrics.resolve_actual_progress", return_value=41.2
     ) as live:
@@ -114,8 +116,10 @@ def test_weekly_snapshot_frozen_after_cut_off_passed():
     db = MagicMock()
 
     with patch("app.services.progress_metrics.today_jakarta", return_value=date(2026, 10, 4)), patch(
-        "app.services.progress_metrics.snapshot_for_anchor_week", return_value=snap
-    ), patch("app.services.progress_metrics.kickoff_milestones", return_value=[MagicMock()]), patch(
+        "app.services.schedule.ensure_closed_period_snapshot", return_value=snap
+    ), patch("app.services.progress_metrics.snapshot_for_anchor_week", return_value=snap), patch(
+        "app.services.progress_metrics.kickoff_milestones", return_value=[MagicMock()]
+    ), patch(
         "app.services.progress_metrics.active_report_week_context",
         return_value=(cut_off, cut_off, cut_off, cut_off),
     ), patch(

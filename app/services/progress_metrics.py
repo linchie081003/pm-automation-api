@@ -71,12 +71,18 @@ def delivery_week_metrics(
 
         plan_rows = planned_progress_rows(db, project.id)
 
+    today = today_jakarta()
+    if as_of is None and today > cut_off:
+        from app.services.schedule import ensure_closed_period_snapshot
+
+        ensure_closed_period_snapshot(db, project, anchor, cut_off)
+
     snap = snapshot_for_anchor_week(db, project.id, anchor)
     frozen_sources = {
         ProgressSnapshotSource.weekly_report,
         ProgressSnapshotSource.manual_save,
+        ProgressSnapshotSource.auto_frozen,
     }
-    today = today_jakarta()
     in_progress = as_of is None and today <= cut_off
 
     if snap and snap.source in frozen_sources and not in_progress:

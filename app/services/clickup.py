@@ -881,6 +881,10 @@ def sync_project_tasks(db: Session, project: Project) -> dict:
     if not row or not row.clickup_api_token_enc:
         raise ClickUpSyncError("Token ClickUp org tidak ada. Setting → Integrasi ClickUp.")
 
+    from app.services.schedule import ensure_recent_closed_snapshots
+
+    ensure_recent_closed_snapshots(db, project)
+
     all_ms_for_map = list(
         db.scalars(select(Milestone).where(Milestone.project_id == project.id)).all()
     )

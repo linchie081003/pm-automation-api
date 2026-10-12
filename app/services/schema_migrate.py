@@ -258,3 +258,5 @@ def ensure_phase_af_columns(engine: Engine) -> None:
         doc_enums = ["documenttype", "document_type"]
     for type_name in doc_enums:
         _add_enum_values_autocommit(engine, type_name, doc_type_values)
+
+    _add_enum_values_autocommit(engine, "progresssnapshotsource", ["auto_frozen"])

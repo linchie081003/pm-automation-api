@@ -58,6 +58,7 @@ class ProgressSnapshotSource(str, enum.Enum):
     weekly_report = "weekly_report"
     manual_save = "manual_save"
     planned_target = "planned_target"
+    auto_frozen = "auto_frozen"
 
 
 class ApprovalStatus(str, enum.Enum):

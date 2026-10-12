@@ -490,9 +490,11 @@ def get_scurve(
     project = db.get(Project, project_id)
     project_end, _ = project_report_end_date(db, project_id)
     sch_start = project_report_start_date(db, project) if project else None
-    return scurve_points(
+    points = scurve_points(
         db,
         project_id,
         date_from=date_from or sch_start,
         date_to=date_to,
     )
+    db.commit()
+    return points

@@ -27,7 +27,9 @@ def get_project_health(
     codes: set[str] = Depends(get_permission_codes),
 ):
     ensure_project_read(project_id, user, codes, db)
-    return compute_health(db, project_id)
+    result = compute_health(db, project_id)
+    db.commit()
+    return result
 
 
 @router.get("/projects/{project_id}/health/config")

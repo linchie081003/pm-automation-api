@@ -549,6 +549,105 @@ def save_weekly_progress(
     return snap
 
 
+def ensure_closed_period_snapshot(
+    db: Session,
+    project: Project,
+    week_start: date,
+    week_end: date,
+) -> ProgressSnapshot | None:
+    """Bekukan actual/planned untuk periode yang cut off-nya sudah
+    lewat, supaya sync ClickUp berikutnya tidak lagi diam-diam
+    menimpa angka historis. Periode yang masih berjalan
+    (today <= week_end) tidak disentuh sama sekali.
+    """
+    today = today_jakarta()
+    if today <= week_end:
+        return None
+
+    existing = db.scalar(
+        select(ProgressSnapshot).where(
+            ProgressSnapshot.project_id == project.id,
+            ProgressSnapshot.week_start == week_start,
+        )
+    )
+    frozen_sources = {
+        ProgressSnapshotSource.weekly_report,
+        ProgressSnapshotSource.manual_save,
+        ProgressSnapshotSource.auto_frozen,
+    }
+    if existing and existing.source in frozen_sources:
+        return existing
+
+    baseline = baseline_for_date(db, project.id, week_end)
+    if not baseline:
+        return existing
+
+    plan_rows = kickoff_milestones(db, project.id) or planned_progress_rows(db, project.id)
+    planned = planned_pct_as_of(plan_rows, week_end, db=db)
+    actual = resolve_actual_progress(db, project, week_end)
+    spi_val = compute_spi(actual, planned) or 0.0
+
+    if existing:
+        existing.planned_cumulative_pct = planned
+        existing.actual_cumulative_pct = actual
+        existing.spi_at_week = spi_val
+        existing.baseline_version = baseline.version
+        existing.source = ProgressSnapshotSource.auto_frozen
+        db.flush()
+        return existing
+
+    snap = ProgressSnapshot(
+        project_id=project.id,
+        week_start=week_start,
+        week_end=week_end,
+        baseline_version=baseline.version,
+        planned_cumulative_pct=planned,
+        actual_cumulative_pct=actual,
+        spi_at_week=spi_val,
+        source=ProgressSnapshotSource.auto_frozen,
+    )
+    db.add(snap)
+    db.flush()
+    return snap
+
+
+def ensure_recent_closed_snapshots(
+    db: Session,
+    project: Project,
+    *,
+    lookback_days: int = 120,
+) -> None:
+    """Panggil saat sync ClickUp: tangkap SEMUA periode yang sudah
+    lewat cut off dalam `lookback_days` terakhir yang belum pernah
+    dibekukan, lalu bekukan satu-satu. Dibatasi lookback_days supaya
+    tidak loop sepanjang umur project.
+    """
+    from app.services.weekly_report_anchors import anchor_target_series
+    from app.services.schedule_window import project_report_end_date
+
+    project_end, _ = project_report_end_date(db, project.id)
+    if not project_end:
+        return
+    today = today_jakarta()
+    try:
+        anchors, target_rows, _ = anchor_target_series(db, project, cap_at=project_end)
+    except ValueError:
+        return
+    target_by_anchor = {
+        (r.get("report_date") or r["anchor_date"]): r for r in target_rows
+    }
+    for anchor in anchors:
+        if anchor >= today:
+            continue
+        if (today - anchor).days > lookback_days:
+            continue
+        row = target_by_anchor.get(anchor.isoformat())
+        if not row:
+            continue
+        cut_off = date.fromisoformat(row["cut_off_date"])
+        ensure_closed_period_snapshot(db, project, anchor, cut_off)
+
+
 def seed_planned_weekly_targets(db: Session, project_id: int) -> dict:
     """
     Generate daftar target planned % per anchor weekly report s.d. End proyek (planned → 100%).
@@ -693,18 +792,26 @@ def scurve_points(
         row = target_by_anchor.get(anchor.isoformat())
         if not row:
             continue
-        snap = snap_by_week.get(anchor)
+        cut_off = date.fromisoformat(row["cut_off_date"])
+        if today > cut_off:
+            ensure_closed_period_snapshot(db, project, anchor, cut_off)
+        snap = snap_by_week.get(anchor) or db.scalar(
+            select(ProgressSnapshot).where(
+                ProgressSnapshot.project_id == project_id,
+                ProgressSnapshot.week_start == anchor,
+            )
+        )
         if snap and snap.source == ProgressSnapshotSource.planned_target:
             planned = float(snap.planned_cumulative_pct)
         else:
             planned = float(row["planned_cumulative_pct"])
-        cut_off = date.fromisoformat(row["cut_off_date"])
         frozen = False
         baseline_version = current.version if current else None
 
         if snap and snap.source in (
             ProgressSnapshotSource.weekly_report,
             ProgressSnapshotSource.manual_save,
+            ProgressSnapshotSource.auto_frozen,
         ):
             actual = snap.actual_cumulative_pct
             spi = snap.spi_at_week
