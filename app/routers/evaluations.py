@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, get_permission_codes
-from app.core.project_access import ensure_permission, ensure_project_read
+from app.core.project_access import ensure_permission, ensure_project_read, ensure_project_write
 from app.database import get_db
 from app.models import ProjectEvaluation, User
 from app.services.evaluation import compute_evaluation
@@ -47,7 +47,7 @@ def run_compute(
     codes: set[str] = Depends(get_permission_codes),
 ):
     ensure_permission(codes, "evaluations.read", "projects.write")
-    ensure_project_read(project_id, user, codes, db)
+    ensure_project_write(project_id, user, codes, db)
     ev = compute_evaluation(db, project_id)
     db.commit()
     return {

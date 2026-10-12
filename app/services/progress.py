@@ -280,6 +280,43 @@ def _status_implies_in_progress(status: str | None) -> bool:
     return classify_clickup_status(status) == "IN PROGRESS"
 
 
+def resolve_task_progress_pct(
+    *,
+    status: str | None,
+    percent_complete: float | None,
+    is_closed: bool,
+    time_spent_ms: int | None,
+    time_estimate_ms: int | None,
+    raw_json: dict | None,
+) -> float:
+    """Prioritas: closed/100% > mapping status org > checklist/native/time ClickUp > default bucket."""
+    if is_closed or (percent_complete or 0) >= 100:
+        return 100.0
+    st = _norm_clickup_status(status)
+    ctx = _clickup_mapping_ctx.get()
+    if ctx and st in ctx.progress_fallback:
+        return float(ctx.progress_fallback[st])
+    if percent_complete is not None and percent_complete > 0:
+        return float(percent_complete)
+    if time_estimate_ms and time_estimate_ms > 0 and time_spent_ms:
+        return round(min(100.0, time_spent_ms / time_estimate_ms * 100.0), 2)
+    raw = raw_json if isinstance(raw_json, dict) else {}
+    native = raw.get("percent_complete")
+    if native is not None:
+        try:
+            p = float(native)
+            if p > 0:
+                return min(100.0, p)
+        except (TypeError, ValueError):
+            pass
+    bucket = classify_clickup_status(status)
+    if bucket == "DONE":
+        return 100.0
+    if bucket == "IN PROGRESS":
+        return BUCKET_DEFAULT_PROGRESS["IN PROGRESS"]
+    return BUCKET_DEFAULT_PROGRESS["TODO"]
+
+
 def _task_completion(
     task: ClickUpTaskCache,
     *,
@@ -289,30 +326,17 @@ def _task_completion(
         vals = [_task_completion(st) for st in subtasks]
         if vals:
             return round(sum(vals) / len(vals), 2)
-    if task.is_closed or (task.percent_complete or 0) >= 100:
-        return 100.0
-    if task.percent_complete is not None and task.percent_complete > 0:
-        return float(task.percent_complete)
-    if task.time_estimate_ms and task.time_estimate_ms > 0 and task.time_spent_ms:
-        return round(min(100.0, task.time_spent_ms / task.time_estimate_ms * 100.0), 2)
-    raw = task.raw_json if isinstance(task.raw_json, dict) else {}
-    native = raw.get("percent_complete")
-    if native is not None:
-        try:
-            p = float(native)
-            if p > 0:
-                return min(100.0, p)
-        except (TypeError, ValueError):
-            pass
-    st = _norm_clickup_status(task.status)
-    ctx = _clickup_mapping_ctx.get()
-    if ctx and st in ctx.progress_fallback:
-        return float(ctx.progress_fallback[st])
-    if _cache_is_done(task):
-        return 100.0
-    if _status_implies_in_progress(task.status):
-        return BUCKET_DEFAULT_PROGRESS["IN PROGRESS"]
-    return BUCKET_DEFAULT_PROGRESS["TODO"]
+    if task.resolved_progress_pct is not None:
+        return float(task.resolved_progress_pct)
+    # Fallback: baris lama yang belum pernah di-sync ulang sejak kolom ini ada.
+    return resolve_task_progress_pct(
+        status=task.status,
+        percent_complete=task.percent_complete,
+        is_closed=task.is_closed,
+        time_spent_ms=task.time_spent_ms,
+        time_estimate_ms=task.time_estimate_ms,
+        raw_json=task.raw_json,
+    )
 
 
 def task_cache_progress_pct(

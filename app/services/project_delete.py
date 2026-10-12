@@ -12,6 +12,7 @@ from app.models import (
     PreKickoffPack,
     ProgressSnapshot,
     Project,
+    ProjectChangeRequest,
     ProjectEvaluation,
     ProjectHealthConfig,
     ProjectHealthSnapshot,
@@ -53,6 +54,7 @@ def delete_project(db: Session, project: Project) -> None:
     db.execute(delete(WeeklyReport).where(WeeklyReport.project_id == pid))
     db.execute(delete(ClickUpTaskCache).where(ClickUpTaskCache.project_id == pid))
     db.execute(delete(RebaselineRequest).where(RebaselineRequest.project_id == pid))
+    db.execute(delete(ProjectChangeRequest).where(ProjectChangeRequest.project_id == pid))
     db.execute(delete(ProjectEvaluation).where(ProjectEvaluation.project_id == pid))
     db.execute(delete(ApprovalRequest).where(ApprovalRequest.project_id == pid))
     db.execute(delete(ActivityLog).where(ActivityLog.project_id == pid))

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core.deps import get_current_user, get_permission_codes
-from app.core.project_access import ensure_permission, ensure_project_read
+from app.core.project_access import ensure_permission, ensure_project_read, ensure_project_write
 from app.database import get_db
 from app.models import Project, User
 from app.services.activity import log_activity
@@ -39,7 +39,7 @@ def sync_tasks(
     codes: set[str] = Depends(get_permission_codes),
 ):
     ensure_permission(codes, "integrations.clickup.project")
-    ensure_project_read(project_id, user, codes, db)
+    ensure_project_write(project_id, user, codes, db)
     project = db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Not found")
@@ -58,8 +58,10 @@ def sync_tasks(
         db.commit()
         return result
     except ClickUpSyncError as e:
+        db.rollback()
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=502, detail=f"Sync ClickUp gagal: {e}") from e
 
 

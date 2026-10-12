@@ -70,6 +70,7 @@ def ensure_phase_af_columns(engine: Engine) -> None:
         "ALTER TABLE clickup_task_cache ADD COLUMN IF NOT EXISTS time_spent_ms INTEGER",
         "ALTER TABLE clickup_task_cache ADD COLUMN IF NOT EXISTS time_estimate_ms INTEGER",
         "ALTER TABLE clickup_task_cache ADD COLUMN IF NOT EXISTS percent_complete DOUBLE PRECISION",
+        "ALTER TABLE clickup_task_cache ADD COLUMN IF NOT EXISTS resolved_progress_pct DOUBLE PRECISION",
         "ALTER TABLE clickup_task_cache ADD COLUMN IF NOT EXISTS is_closed BOOLEAN DEFAULT FALSE",
         "ALTER TABLE clickup_task_cache ADD COLUMN IF NOT EXISTS parent_task_id VARCHAR(64)",
         "ALTER TABLE clickup_task_cache ADD COLUMN IF NOT EXISTS raw_json JSONB DEFAULT '{}'",

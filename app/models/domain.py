@@ -513,6 +513,7 @@ class ClickUpTaskCache(Base):
     time_spent_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     time_estimate_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     percent_complete: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    resolved_progress_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False)
     parent_task_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     clickup_list_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)

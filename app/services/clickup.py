@@ -790,6 +790,8 @@ def _upsert_task_cache(
     milestone_id: int | None = None,
     milestone_id_authoritative: bool = False,
 ) -> None:
+    from app.services.progress import resolve_task_progress_pct
+
     tid = str(t.get("id", ""))
     if not tid:
         return
@@ -797,6 +799,15 @@ def _upsert_task_cache(
     status = status_obj.get("status", "")
     existing = _find_clickup_task_cache(db, project.id, tid)
     pct = resolve_task_percent_complete(t)
+    is_closed = _task_closed(t)
+    resolved = resolve_task_progress_pct(
+        status=status,
+        percent_complete=pct,
+        is_closed=is_closed,
+        time_spent_ms=t.get("time_spent"),
+        time_estimate_ms=t.get("time_estimate"),
+        raw_json=t,
+    )
     row_data = {
         "name": t.get("name", ""),
         "status": status,
@@ -807,7 +818,8 @@ def _upsert_task_cache(
         "time_spent_ms": t.get("time_spent"),
         "time_estimate_ms": t.get("time_estimate"),
         "percent_complete": pct,
-        "is_closed": _task_closed(t),
+        "resolved_progress_pct": resolved,
+        "is_closed": is_closed,
         "parent_task_id": str(t.get("parent") or "") or None,
         "clickup_list_id": list_id,
         "milestone_id": milestone_id,
