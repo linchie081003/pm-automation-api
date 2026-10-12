@@ -533,7 +533,7 @@ def sync_clickup(
     user: User = Depends(get_current_user),
     codes: set[str] = Depends(get_permission_codes),
 ):
-    ensure_project_read(project_id, user, codes, db)
+    ensure_project_write(project_id, user, codes, db)
     project = db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Not found")
@@ -542,4 +542,11 @@ def sync_clickup(
         db.commit()
         return {**result, "synced_tasks": result.get("synced", 0)}
     except ClickUpSyncError as e:
+        db.rollback()
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except httpx.HTTPError as e:
+        db.rollback()
+        raise clickup_http_exception(e) from e
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Sync ClickUp gagal: {e}") from e

@@ -27,6 +27,7 @@ from app.schemas.schedule import (
     ScurvePoint,
 )
 from app.core.timezone import today_jakarta
+from app.services.report_calendar import active_open_report_date
 from app.services.schedule import (
     milestone_chart_points,
     rebaseline_markers,
@@ -209,6 +210,17 @@ def save_week_progress(
     ensure_project_write(project_id, user, codes, db)
     project = _get_project(db, project_id)
     week_key, _ = snapshot_anchor_for_date(project, week_start)
+
+    active_rd = active_open_report_date(today_jakarta(), project.weekly_report_anchor_weekday)
+    if week_key != active_rd:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Progress snapshot hanya bisa disimpan untuk minggu laporan yang "
+                "sedang aktif, bukan periode yang sudah lewat atau mendatang."
+            ),
+        )
+
     existing = db.scalar(
         select(ProgressSnapshot).where(
             ProgressSnapshot.project_id == project_id,
