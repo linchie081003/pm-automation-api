@@ -51,8 +51,8 @@ def test_build_weekly_report_pptx_smoke(tmp_path, monkeypatch):
     db.get.return_value = None
     monkeypatch.setattr(
         mod,
-        "timeline_display_rows_for_project",
-        lambda _db, _pid, **_: [],
+        "get_asof_rows",
+        lambda _db, _pid, _as_of, **_: [],
     )
     monkeypatch.setattr(mod, "scurve_points", lambda _db, _pid, **kw: [])
     monkeypatch.setattr(

@@ -61,6 +61,10 @@ class ProgressSnapshotSource(str, enum.Enum):
     auto_frozen = "auto_frozen"
 
 
+class ActivityHistorySource(str, enum.Enum):
+    clickup_sync = "clickup_sync"
+
+
 class ApprovalStatus(str, enum.Enum):
     pending = "pending"
     approved = "approved"
@@ -336,6 +340,25 @@ class ProgressSnapshot(Base):
 
     __table_args__ = (
         UniqueConstraint("project_id", "week_start", name="uq_project_week_snapshot"),
+    )
+
+
+class ActivityProgressHistory(Base):
+    __tablename__ = "activity_progress_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    milestone_id: Mapped[int] = mapped_column(ForeignKey("milestones.id"), index=True)
+    captured_at: Mapped[date] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(32))
+    progress_pct: Mapped[float] = mapped_column(Float)
+    start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    source: Mapped[ActivityHistorySource] = mapped_column(Enum(ActivityHistorySource))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_jakarta)
+
+    __table_args__ = (
+        UniqueConstraint("milestone_id", "captured_at", name="uq_activity_history_milestone_day"),
     )
 
 

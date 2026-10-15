@@ -1029,6 +1029,10 @@ def sync_project_tasks(db: Session, project: Project) -> dict:
         inherited_dates = inherit_empty_task_dates_from_parent(db, project.id, all_ms)
         timeline_dates_updated = apply_clickup_dates_to_timeline(db, project.id)
 
+        from app.services.activity_progress_history import record_activity_snapshot
+
+        record_activity_snapshot(db, project)
+
         project.clickup_synced_at = now_jakarta()
         db.flush()
         return {

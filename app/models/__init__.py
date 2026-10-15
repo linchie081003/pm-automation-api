@@ -7,7 +7,9 @@ from app.models.auth import (
     User,
 )
 from app.models.domain import (
+    ActivityHistorySource,
     ActivityLog,
+    ActivityProgressHistory,
     ApprovalRequest,
     ApprovalStatus,
     ClickUpStructureTemplate,
@@ -88,7 +90,9 @@ __all__ = [
     "ApprovalStatus",
     "Document",
     "DocumentType",
+    "ActivityHistorySource",
     "ActivityLog",
+    "ActivityProgressHistory",
     "IntegrationSettings",
     "ClickUpStructureTemplate",
     "ClickUpTaskCache",

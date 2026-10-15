@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 from types import SimpleNamespace
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import ClickUpTaskCache, Milestone, MilestoneStatus, Project
@@ -80,6 +81,31 @@ class ReportRowProgressContext:
     tasks_by_id: dict[str, ClickUpTaskCache]
     milestone_cache: dict[int, ClickUpTaskCache]
     caches: list[ClickUpTaskCache]
+
+
+def build_report_row_progress_context(db: Session, project: Project) -> ReportRowProgressContext:
+    from app.services.progress import build_clickup_lookups
+    from app.services.schedule_window import kickoff_milestones
+
+    ms_list = kickoff_milestones(db, project.id) or list(
+        db.scalars(select(Milestone).where(Milestone.project_id == project.id)).all()
+    )
+    caches = list(
+        db.scalars(
+            select(ClickUpTaskCache).where(ClickUpTaskCache.project_id == project.id)
+        ).all()
+    )
+    ms_by_id = {m.id: m for m in ms_list}
+    tasks_by_id, milestone_cache = build_clickup_lookups(ms_list, caches)
+    return ReportRowProgressContext(
+        db=db,
+        project=project,
+        milestones=ms_list,
+        ms_by_id=ms_by_id,
+        tasks_by_id=tasks_by_id,
+        milestone_cache=milestone_cache,
+        caches=caches,
+    )
 
 
 def display_row_actual_pct(ctx: ReportRowProgressContext, row: dict, as_of: date) -> float:

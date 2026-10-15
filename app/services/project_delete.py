@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     ActivityLog,
+    ActivityProgressHistory,
     ApprovalRequest,
     ApprovalStatus,
     ClickUpTaskCache,
@@ -53,6 +54,7 @@ def delete_project(db: Session, project: Project) -> None:
     db.execute(delete(ProjectHealthSnapshot).where(ProjectHealthSnapshot.project_id == pid))
     db.execute(delete(WeeklyReport).where(WeeklyReport.project_id == pid))
     db.execute(delete(ClickUpTaskCache).where(ClickUpTaskCache.project_id == pid))
+    db.execute(delete(ActivityProgressHistory).where(ActivityProgressHistory.project_id == pid))
     db.execute(delete(RebaselineRequest).where(RebaselineRequest.project_id == pid))
     db.execute(delete(ProjectChangeRequest).where(ProjectChangeRequest.project_id == pid))
     db.execute(delete(ProjectEvaluation).where(ProjectEvaluation.project_id == pid))

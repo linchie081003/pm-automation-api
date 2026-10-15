@@ -27,15 +27,13 @@ from app.models import (
 )
 from app.services.report_calendar import resolve_report_period
 from app.services.schedule import scurve_points
-from app.services.progress import build_clickup_lookups, clickup_status_mapping_context
 from app.services.business_calendar import count_business_days_inclusive
 from app.services.schedule_window import (
     kickoff_milestones,
     project_report_start_date,
     timeline_report_bounds,
 )
-from app.services.timeline_display import timeline_display_rows_for_project
-from app.services.timeline_report_metrics import ReportRowProgressContext, display_row_actual_pct
+from app.services.activity_progress_history import get_asof_rows
 from app.core.timezone import today_jakarta
 
 COLOR_ORANGE = RGBColor(0xF5, 0x82, 0x20)
@@ -958,7 +956,8 @@ def _build_slide_timeline(
     _slide_footer(slide, 4)
 
     _TIMELINE_SLIDE_EXCLUDE_ITEM_TYPES = frozenset({TimelineItemType.subtask.value})
-    rows = timeline_display_rows_for_project(db, project.id, include_subtasks=False)
+    cut_off = as_of or today_jakarta()
+    rows = get_asof_rows(db, project.id, cut_off)
     display_rows = [
         r
         for r in rows
@@ -1000,63 +999,41 @@ def _build_slide_timeline(
         cell.fill.fore_color.rgb = COLOR_ORANGE
     _style_table_row(table, 0, header=True)
 
-    cut_off = as_of or today_jakarta()
-    ms_list = kickoff_milestones(db, project.id) or list(
-        db.scalars(select(Milestone).where(Milestone.project_id == project.id)).all()
-    )
-    caches = list(
-        db.scalars(
-            select(ClickUpTaskCache).where(ClickUpTaskCache.project_id == project.id)
-        ).all()
-    )
-    ms_by_id = {m.id: m for m in ms_list}
-
-    with clickup_status_mapping_context(db):
-        tasks_by_id, milestone_cache = build_clickup_lookups(ms_list, caches)
-        progress_ctx = ReportRowProgressContext(
-            db=db,
-            project=project,
-            milestones=ms_list,
-            ms_by_id=ms_by_id,
-            tasks_by_id=tasks_by_id,
-            milestone_cache=milestone_cache,
-            caches=caches,
-        )
-        for i, row in enumerate(display_rows, start=1):
-            start_d = _parse_iso(row.get("display_start") or row.get("start_date"))
-            end_d = _parse_iso(row.get("display_end") or row.get("target_date"))
-            pct = display_row_actual_pct(progress_ctx, row, cut_off)
-            pct_txt = f"{pct:.0f}%"
-            notes = (row.get("notes") or "").strip()
-            if not notes and row.get("module"):
-                notes = str(row.get("module"))
-            if len(notes) > 120:
-                notes = notes[:117] + "…"
-            values = [
-                str(i),
-                _activity_name(row),
-                _fmt_date_slash(start_d),
-                _fmt_date_slash(end_d),
-                pct_txt,
-                _status_display(row),
-                notes or "—",
-            ]
-            fill = COLOR_PEACH if i % 2 == 0 else COLOR_PEACH_LIGHT
-            for j, val in enumerate(values):
-                cell = table.cell(i, j)
-                align = PP_ALIGN.CENTER if j in (0, 2, 3, 4, 5) else PP_ALIGN.LEFT
-                bold = j == 1 and int(row.get("depth") or 0) == 0
-                _set_cell_text(
-                    cell,
-                    val,
-                    size=TABLE_BODY_FONT,
-                    bold=bold,
-                    color=COLOR_DARK,
-                    align=align,
-                )
-                cell.fill.solid()
-                cell.fill.fore_color.rgb = fill if j != 0 else COLOR_PEACH_LIGHT
-            _style_table_row(table, i, header=False)
+    for i, row in enumerate(display_rows, start=1):
+        start_d = _parse_iso(row.get("display_start") or row.get("start_date"))
+        end_d = _parse_iso(row.get("display_end") or row.get("target_date"))
+        pct = float(row.get("clickup_progress_pct") or 0)
+        pct_txt = f"{pct:.0f}%"
+        notes = (row.get("notes") or "").strip()
+        if not notes and row.get("module"):
+            notes = str(row.get("module"))
+        if len(notes) > 120:
+            notes = notes[:117] + "…"
+        values = [
+            str(i),
+            _activity_name(row),
+            _fmt_date_slash(start_d),
+            _fmt_date_slash(end_d),
+            pct_txt,
+            _status_display(row),
+            notes or "—",
+        ]
+        fill = COLOR_PEACH if i % 2 == 0 else COLOR_PEACH_LIGHT
+        for j, val in enumerate(values):
+            cell = table.cell(i, j)
+            align = PP_ALIGN.CENTER if j in (0, 2, 3, 4, 5) else PP_ALIGN.LEFT
+            bold = j == 1 and int(row.get("depth") or 0) == 0
+            _set_cell_text(
+                cell,
+                val,
+                size=TABLE_BODY_FONT,
+                bold=bold,
+                color=COLOR_DARK,
+                align=align,
+            )
+            cell.fill.solid()
+            cell.fill.fore_color.rgb = fill if j != 0 else COLOR_PEACH_LIGHT
+        _style_table_row(table, i, header=False)
 
 
 def build_weekly_report_pptx(

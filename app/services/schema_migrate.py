@@ -220,6 +220,22 @@ def ensure_phase_af_columns(engine: Engine) -> None:
         )
         """,
         "CREATE INDEX IF NOT EXISTS ix_timeline_editor_pred_row ON timeline_editor_predecessors (editor_row_id)",
+        """
+        CREATE TABLE IF NOT EXISTS activity_progress_history (
+            id SERIAL PRIMARY KEY,
+            project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            milestone_id INTEGER NOT NULL REFERENCES milestones(id) ON DELETE CASCADE,
+            captured_at DATE NOT NULL,
+            status VARCHAR(32) NOT NULL,
+            progress_pct DOUBLE PRECISION NOT NULL,
+            start_date DATE,
+            end_date DATE,
+            source VARCHAR(32) NOT NULL DEFAULT 'clickup_sync',
+            created_at TIMESTAMP DEFAULT NOW(),
+            CONSTRAINT uq_activity_history_milestone_day UNIQUE (milestone_id, captured_at)
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_activity_progress_history_milestone_day ON activity_progress_history (milestone_id, captured_at)",
     ]
     enum_values = ["phase", "subtask"]
     doc_type_values = [

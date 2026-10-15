@@ -45,7 +45,7 @@ from app.services.schedule_window import (
     schedule_bounds,
 )
 from app.services.templates.loader import copy_template
-from app.services.timeline_display import timeline_display_rows_for_project
+from app.services.activity_progress_history import get_asof_rows
 from app.core.timezone import today_jakarta
 
 _SCURVE_ROMAN = (
@@ -98,6 +98,9 @@ def _parse_row_date(val: object) -> date | None:
 
 
 def _row_actual_fraction(row: dict, ctx: ReportRowProgressContext, as_of: date) -> float:
+    pct = row.get("clickup_progress_pct")
+    if pct is not None:
+        return float(pct) / 100.0
     return display_row_actual_pct(ctx, row, as_of) / 100.0
 
 
@@ -351,7 +354,7 @@ def export_yyyymmdd_workbook(
     wb = load_workbook(dest)
     _trim_workbook_sheets(wb)
 
-    display = timeline_display_rows_for_project(db, project.id, include_subtasks=True)
+    display = get_asof_rows(db, project.id, cut_off, include_subtasks=True)
     ms_list = kickoff_milestones(db, project.id) or milestones
     ms_by_id = {m.id: m for m in ms_list}
     caches = list(
